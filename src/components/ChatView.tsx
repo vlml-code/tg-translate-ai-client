@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
+import { pinyin } from 'pinyin-pro';
 import { MessageInfo, TranslationSettings } from '../types';
 import { telegramService } from '../services/telegramClient';
 import { translationService } from '../services/translationService';
@@ -18,6 +19,56 @@ interface ChatViewProps {
   chatTitle: string;
   translationSettings: TranslationSettings;
 }
+
+type ToneCategory = '0' | '1' | '2' | '3' | '4' | '5';
+
+const CHINESE_CHAR_REGEX = /[\u3400-\u9FFF]/u;
+
+const getToneCategory = (numericPinyin: string): ToneCategory => {
+  const match = numericPinyin?.match(/([1-5])$/);
+  return (match?.[1] as ToneCategory) || '0';
+};
+
+const renderMessageTextWithPinyin = (text: string, messageId: number) => {
+  const nodes: React.ReactNode[] = [];
+  let buffer = '';
+  let bufferIndex = 0;
+
+  const pushBuffer = () => {
+    if (!buffer) return;
+    nodes.push(
+      <span key={`buffer-${messageId}-${bufferIndex++}`} className="message-text-chunk">
+        {buffer}
+      </span>
+    );
+    buffer = '';
+  };
+
+  Array.from(text).forEach((char, index) => {
+    if (CHINESE_CHAR_REGEX.test(char)) {
+      pushBuffer();
+      const tooltip = pinyin(char);
+      const toneCategory = getToneCategory(pinyin(char, { toneType: 'num' }));
+
+      nodes.push(
+        <span
+          key={`char-${messageId}-${index}`}
+          className="chinese-char"
+          data-pinyin={tooltip}
+          data-tone={toneCategory}
+        >
+          {char}
+        </span>
+      );
+    } else {
+      buffer += char;
+    }
+  });
+
+  pushBuffer();
+
+  return nodes;
+};
 
 interface TranslationState {
   [messageId: number]: {
@@ -297,7 +348,11 @@ export const ChatView: React.FC<ChatViewProps> = ({
                   <div className="message-sender">{message.senderName}</div>
                 )}
                 <div className="message-bubble">
-                  <div className="message-text">{message.text || '[Media]'}</div>
+                  <div className="message-text">
+                    {message.text
+                      ? renderMessageTextWithPinyin(message.text, message.id)
+                      : '[Media]'}
+                  </div>
                   {translationState?.isShowingTranslation && translationState.translatedText && (
                     <div className="message-translation">
                       {translationState.translatedText}
