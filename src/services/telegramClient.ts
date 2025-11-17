@@ -1,6 +1,6 @@
-import { TelegramClient } from 'telegram';
+import { TelegramClient, Api } from 'telegram';
 import { StringSession } from 'telegram/sessions';
-import { Api } from 'telegram';
+import { computeCheck } from 'telegram/Password';
 import { SessionManager } from './sessionManager';
 import { ChatInfo, MessageInfo } from '../types';
 
@@ -71,9 +71,18 @@ export class TelegramService {
   async signInWithPassword(password: string): Promise<void> {
     if (!this.client) throw new Error('Client not initialized');
 
+    // Get password information from Telegram
+    const passwordInfo = await this.client.invoke(
+      new Api.account.GetPassword()
+    );
+
+    // Compute the password check
+    const passwordCheck = await computeCheck(passwordInfo, password);
+
+    // Sign in with the password
     await this.client.invoke(
       new Api.auth.CheckPassword({
-        password: await this.client.getPassword(password),
+        password: passwordCheck,
       })
     );
 
