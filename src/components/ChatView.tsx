@@ -14,6 +14,18 @@ const TranslateIcon = () => (
   </svg>
 );
 
+const SimplifyIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path
+      d="M4 7H20M4 12H12M4 17H16"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
 interface ChatViewProps {
   chatId: string;
   chatTitle: string;
@@ -29,7 +41,7 @@ const getToneCategory = (numericPinyin: string): ToneCategory => {
   return (match?.[1] as ToneCategory) || '0';
 };
 
-const renderMessageTextWithPinyin = (text: string, messageId: number) => {
+const renderMessageTextWithPinyin = (text: string, messageKey: string | number) => {
   const nodes: React.ReactNode[] = [];
   let buffer = '';
   let bufferIndex = 0;
@@ -37,7 +49,7 @@ const renderMessageTextWithPinyin = (text: string, messageId: number) => {
   const pushBuffer = () => {
     if (!buffer) return;
     nodes.push(
-      <span key={`buffer-${messageId}-${bufferIndex++}`} className="message-text-chunk">
+      <span key={`buffer-${messageKey}-${bufferIndex++}`} className="message-text-chunk">
         {buffer}
       </span>
     );
@@ -52,7 +64,7 @@ const renderMessageTextWithPinyin = (text: string, messageId: number) => {
 
       nodes.push(
         <span
-          key={`char-${messageId}-${index}`}
+          key={`char-${messageKey}-${index}`}
           className="chinese-char"
           data-pinyin={tooltip}
           data-tone={toneCategory}
@@ -70,14 +82,33 @@ const renderMessageTextWithPinyin = (text: string, messageId: number) => {
   return nodes;
 };
 
-interface TranslationState {
-  [messageId: number]: {
-    translatedText?: string;
-    isShowingTranslation: boolean;
-    isLoading: boolean;
-    error?: string;
-  };
+type AugmentationType = 'translation' | 'simplification';
+
+interface AugmentationState {
+  content?: string;
+  isShowing: boolean;
+  isLoading: boolean;
+  error?: string;
 }
+
+interface MessageAugmentations {
+  translation: AugmentationState;
+  simplification: AugmentationState;
+}
+
+type TranslationState = Record<number, MessageAugmentations>;
+
+const createAugmentationState = (): AugmentationState => ({
+  isShowing: false,
+  isLoading: false,
+  error: undefined,
+  content: undefined
+});
+
+const createMessageAugmentations = (): MessageAugmentations => ({
+  translation: createAugmentationState(),
+  simplification: createAugmentationState()
+});
 
 export const ChatView: React.FC<ChatViewProps> = ({
   chatId,
@@ -211,84 +242,117 @@ export const ChatView: React.FC<ChatViewProps> = ({
     return null;
   };
 
-  const handleTranslateClick = async (message: MessageInfo) => {
+  const handleAugmentationClick = async (message: MessageInfo, type: AugmentationType) => {
     if (!message.text?.trim()) {
       return;
     }
 
-    const state = translations[message.id];
-    if (state?.isLoading) {
+    const messageState = translations[message.id] || createMessageAugmentations();
+    const augmentationState = messageState[type];
+
+    if (augmentationState.isLoading) {
       return;
     }
 
-    if (state?.translatedText) {
-      setTranslations((prev) => ({
+    if (augmentationState.content) {
+      setTranslations((prev) => {
+        const prevState = prev[message.id] || createMessageAugmentations();
+        return {
+          ...prev,
+          [message.id]: {
+            ...prevState,
+            [type]: {
+              ...prevState[type],
+              isShowing: !prevState[type].isShowing,
+              error: undefined
+            }
+          }
+        };
+      });
+      return;
+    }
+
+    setTranslations((prev) => {
+      const prevState = prev[message.id] || createMessageAugmentations();
+      return {
         ...prev,
         [message.id]: {
-          ...state,
-          isShowingTranslation: !state.isShowingTranslation,
-          error: undefined
+          ...prevState,
+          [type]: {
+            ...prevState[type],
+            isLoading: true,
+            error: undefined
+          }
         }
-      }));
-      return;
-    }
-
-    setTranslations((prev) => ({
-      ...prev,
-      [message.id]: {
-        translatedText: state?.translatedText,
-        isShowingTranslation: state?.isShowingTranslation ?? false,
-        isLoading: true,
-        error: undefined
-      }
-    }));
+      };
+    });
 
     try {
-      const translatedText = await translationService.translateMessage({
-        chatId,
-        messageId: message.id,
-        text: message.text,
-        settings: translationSettings
-      });
+      const content =
+        type === 'translation'
+          ? await translationService.translateMessage({
+              chatId,
+              messageId: message.id,
+              text: message.text,
+              settings: translationSettings
+            })
+          : await translationService.simplifyMessage({
+              chatId,
+              messageId: message.id,
+              text: message.text,
+              settings: translationSettings
+            });
 
-      setTranslations((prev) => ({
-        ...prev,
-        [message.id]: {
-          translatedText,
-          isShowingTranslation: true,
-          isLoading: false,
-          error: undefined
-        }
-      }));
+      setTranslations((prev) => {
+        const prevState = prev[message.id] || createMessageAugmentations();
+        return {
+          ...prev,
+          [message.id]: {
+            ...prevState,
+            [type]: {
+              ...prevState[type],
+              content,
+              isShowing: true,
+              isLoading: false,
+              error: undefined
+            }
+          }
+        };
+      });
     } catch (err: any) {
-      setTranslations((prev) => ({
-        ...prev,
-        [message.id]: {
-          translatedText: state?.translatedText,
-          isShowingTranslation: false,
-          isLoading: false,
-          error: err?.message || 'Failed to translate this message.'
-        }
-      }));
+      setTranslations((prev) => {
+        const prevState = prev[message.id] || createMessageAugmentations();
+        return {
+          ...prev,
+          [message.id]: {
+            ...prevState,
+            [type]: {
+              ...prevState[type],
+              isLoading: false,
+              error: err?.message || 'Failed to process this message.'
+            }
+          }
+        };
+      });
     }
   };
 
-  const renderTranslateButtonLabel = (messageId: number) => {
-    const state = translations[messageId];
+  const renderActionButtonLabel = (messageId: number, type: AugmentationType) => {
+    const state = translations[messageId]?.[type];
 
-    if (state?.isShowingTranslation) {
+    if (state?.isShowing) {
       return 'Show original';
     }
 
-    if (state?.translatedText) {
-      return 'Show translation';
+    if (state?.content) {
+      return type === 'translation' ? 'Show translation' : 'Show simplified';
     }
 
     if (state?.isLoading) {
-      return 'Translating...';
+      return type === 'translation' ? 'Translating...' : 'Simplifying...';
     }
 
-    return 'Translate';
+    return type === 'translation' ? 'Translate' : 'Simplify';
   };
 
   if (loading) {
@@ -339,6 +403,8 @@ export const ChatView: React.FC<ChatViewProps> = ({
         {messages.map((message, index) => {
           const translationState = translations[message.id];
           const canTranslate = Boolean(message.text?.trim());
+          const translationContent = translationState?.translation;
+          const simplificationContent = translationState?.simplification;
 
           return (
             <React.Fragment key={message.id}>
@@ -350,12 +416,20 @@ export const ChatView: React.FC<ChatViewProps> = ({
                 <div className="message-bubble">
                   <div className="message-text">
                     {message.text
-                      ? renderMessageTextWithPinyin(message.text, message.id)
+                      ? renderMessageTextWithPinyin(message.text, `msg-${message.id}`)
                       : '[Media]'}
                   </div>
-                  {translationState?.isShowingTranslation && translationState.translatedText && (
+                  {translationContent?.isShowing && translationContent.content && (
                     <div className="message-translation">
-                      {translationState.translatedText}
+                      {translationContent.content}
+                    </div>
+                  )}
+                  {simplificationContent?.isShowing && simplificationContent.content && (
+                    <div className="message-simplified">
+                      {renderMessageTextWithPinyin(
+                        simplificationContent.content,
+                        `simplified-${message.id}`
+                      )}
                     </div>
                   )}
                   <div className="message-time">{formatTime(message.date)}</div>
@@ -363,14 +437,25 @@ export const ChatView: React.FC<ChatViewProps> = ({
                 <div className="message-actions">
                   <button
                     className="translate-btn"
-                    onClick={() => handleTranslateClick(message)}
-                    disabled={!canTranslate || translationState?.isLoading}
+                    onClick={() => handleAugmentationClick(message, 'translation')}
+                    disabled={!canTranslate || translationContent?.isLoading}
                   >
                     <TranslateIcon />
-                    <span>{renderTranslateButtonLabel(message.id)}</span>
+                    <span>{renderActionButtonLabel(message.id, 'translation')}</span>
                   </button>
-                  {translationState?.error && (
-                    <span className="translation-error">{translationState.error}</span>
+                  {translationContent?.error && (
+                    <span className="translation-error">{translationContent.error}</span>
+                  )}
+                  <button
+                    className="translate-btn simplify"
+                    onClick={() => handleAugmentationClick(message, 'simplification')}
+                    disabled={!canTranslate || simplificationContent?.isLoading}
+                  >
+                    <SimplifyIcon />
+                    <span>{renderActionButtonLabel(message.id, 'simplification')}</span>
+                  </button>
+                  {simplificationContent?.error && (
+                    <span className="translation-error">{simplificationContent.error}</span>
                   )}
                 </div>
               </div>

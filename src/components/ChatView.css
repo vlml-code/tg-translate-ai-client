@@ -229,6 +229,22 @@
   border-color: rgba(255, 255, 255, 0.35);
 }
 
+.message-simplified {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  font-size: 14px;
+  line-height: 1.5;
+  background: rgba(110, 231, 183, 0.08);
+  border: 1px dashed rgba(16, 185, 129, 0.4);
+  color: var(--tg-text-primary);
+}
+
+.message.outgoing .message-simplified {
+  background: rgba(16, 185, 129, 0.15);
+  border-color: rgba(110, 231, 183, 0.4);
+}
+
 .message-time {
   font-size: 11px;
   opacity: 0.7;
@@ -243,6 +259,7 @@
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.2s ease;
+  flex-wrap: wrap;
 }
 
 .message:hover .message-actions {
@@ -285,6 +302,15 @@
 .translate-btn:not(:disabled):hover {
   background: var(--tg-accent);
   transform: translateY(-1px);
+}
+
+.translate-btn.simplify {
+  border-color: rgba(16, 185, 129, 0.4);
+  background: rgba(16, 185, 129, 0.1);
+}
+
+.translate-btn.simplify:not(:disabled):hover {
+  background: rgba(16, 185, 129, 0.35);
 }
 
 .translation-error {

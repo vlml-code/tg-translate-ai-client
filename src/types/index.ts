@@ -40,6 +40,7 @@ export interface AuthStep {
 export interface TranslationSettings {
   apiKey: string;
   prompt: string;
+  simplifyPrompt: string;
 }
 
 export type TelegramMessage = Api.Message;

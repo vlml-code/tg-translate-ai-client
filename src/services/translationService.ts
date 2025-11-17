@@ -7,6 +7,8 @@ const MODEL = 'grok-4-fast';
 const CACHE_STORAGE_KEY = 'messageTranslations';
 const DEFAULT_PROMPT =
   'Translate the following Telegram message into English while preserving tone, intent, emojis, and formatting.';
+const DEFAULT_SIMPLIFY_PROMPT =
+  'Rewrite the following Chinese text using only vocabulary from HSK1 or, if needed, HSK2. Keep the text in Chinese while preserving its meaning and tone.';
 
 type CacheRecord = Record<string, string>;
 
@@ -57,11 +59,19 @@ interface TranslateParams {
   settings: TranslationSettings;
 }
 
+interface GenerationParams {
+  chatId: string;
+  messageId: number;
+  text: string;
+  apiKey: string;
+  prompt: string;
+}
+
 const buildCacheKey = (chatId: string, messageId: number, prompt?: string) =>
   `${chatId}:${messageId}:${(prompt || '').trim() || 'default'}`;
 
-const translateMessage = async ({ chatId, messageId, text, settings }: TranslateParams) => {
-  if (!settings.apiKey) {
+const generateWithPrompt = async ({ chatId, messageId, text, apiKey, prompt }: GenerationParams) => {
+  if (!apiKey?.trim()) {
     throw new Error('Please set a Grok API key in Settings before translating messages.');
   }
 
@@ -70,35 +80,38 @@ const translateMessage = async ({ chatId, messageId, text, settings }: Translate
     throw new Error('This message has no text to translate.');
   }
 
-  const cacheKey = buildCacheKey(chatId, messageId, settings.prompt);
+  const resolvedPrompt = prompt?.trim() || DEFAULT_PROMPT;
+
+  const cacheKey = buildCacheKey(chatId, messageId, resolvedPrompt);
   const cached = cache.get(cacheKey);
   if (cached) {
     return cached;
   }
 
   const xai = createXai({
-    apiKey: settings.apiKey
+    apiKey
   });
 
-  let translation: string | undefined;
+  let resultText: string | undefined;
 
   try {
     const result = await generateText({
       model: xai(MODEL),
-      system: settings.prompt?.trim() || DEFAULT_PROMPT,
+      system: resolvedPrompt,
       prompt: trimmedText
     });
-    translation = result.text?.trim();
+    resultText = result.text?.trim();
   } catch (error) {
     if (APICallError.isInstance(error)) {
-      if (error.statusCode === 404) {
+      const apiError = error as { statusCode?: number; message: string };
+      if (apiError.statusCode === 404) {
         throw new Error(
           'The Grok translation endpoint returned 404. Please confirm your API key is valid and that https://api.x.ai is reachable.'
         );
       }
 
-      const responseDetails = error.statusCode ? ` (${error.statusCode})` : '';
-      throw new Error(`Grok API request failed${responseDetails}: ${error.message}`);
+      const responseDetails = apiError.statusCode ? ` (${apiError.statusCode})` : '';
+      throw new Error(`Grok API request failed${responseDetails}: ${apiError.message}`);
     }
 
     throw error instanceof Error
@@ -106,14 +119,33 @@ const translateMessage = async ({ chatId, messageId, text, settings }: Translate
       : new Error('Grok translation failed due to an unknown error.');
   }
 
-  if (!translation) {
+  if (!resultText) {
     throw new Error('Grok API did not return any content.');
   }
 
-  cache.set(cacheKey, translation);
-  return translation;
+  cache.set(cacheKey, resultText);
+  return resultText;
 };
 
+const translateMessage = async ({ chatId, messageId, text, settings }: TranslateParams) =>
+  generateWithPrompt({
+    chatId,
+    messageId,
+    text,
+    apiKey: settings.apiKey,
+    prompt: settings.prompt || DEFAULT_PROMPT
+  });
+
+const simplifyMessage = async ({ chatId, messageId, text, settings }: TranslateParams) =>
+  generateWithPrompt({
+    chatId,
+    messageId,
+    text,
+    apiKey: settings.apiKey,
+    prompt: settings.simplifyPrompt || DEFAULT_SIMPLIFY_PROMPT
+  });
+
 export const translationService = {
-  translateMessage
+  translateMessage,
+  simplifyMessage
 };

@@ -4,7 +4,9 @@ const STORAGE_KEY = 'translationSettings';
 
 const defaultSettings: TranslationSettings = {
   apiKey: '',
-  prompt: 'Translate the following message into English while keeping the tone and intent.'
+  prompt: 'Translate the following message into English while keeping the tone and intent.',
+  simplifyPrompt:
+    'Rewrite the following Chinese text using only words from HSK1 (or, if necessary, HSK2) while preserving the overall meaning. Return only simplified Chinese text.'
 };
 
 const loadSettings = (): TranslationSettings => {
@@ -21,7 +23,8 @@ const loadSettings = (): TranslationSettings => {
     const parsed = JSON.parse(stored) as TranslationSettings;
     return {
       apiKey: parsed.apiKey || '',
-      prompt: parsed.prompt || defaultSettings.prompt
+      prompt: parsed.prompt || defaultSettings.prompt,
+      simplifyPrompt: parsed.simplifyPrompt || defaultSettings.simplifyPrompt
     };
   } catch {
     return defaultSettings;

@@ -63,6 +63,19 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <small>This prompt is sent as the system instruction before your message.</small>
           </label>
 
+          <label className="form-field">
+            <span>Simplify prompt</span>
+            <textarea
+              value={settings.simplifyPrompt}
+              onChange={(e) => setSettings({ ...settings, simplifyPrompt: e.target.value })}
+              rows={4}
+            />
+            <small>
+              Used when you tap <strong>Simplify</strong>. Keep it focused on rewriting Chinese text with only HSK1/HSK2
+              vocabulary.
+            </small>
+          </label>
+
           <div className="settings-actions">
             <button type="button" className="secondary" onClick={onClose}>
               Cancel
