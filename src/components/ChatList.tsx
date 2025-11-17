@@ -83,13 +83,18 @@ export const ChatList: React.FC<ChatListProps> = ({
   return (
     <div className="chat-list">
       <div className="chat-list-header">
-        <h2>Chats</h2>
+        <div className="chat-list-heading">
+          <h2>Chats</h2>
+          <p>Translate with Grok</p>
+        </div>
         <div className="chat-list-actions">
           <button className="settings-btn" onClick={onOpenSettings}>
-            Settings
+            <span aria-hidden="true">⚙️</span>
+            <span>Settings</span>
           </button>
           <button className="logout-btn" onClick={handleLogout}>
-            Logout
+            <span aria-hidden="true">⎋</span>
+            <span>Logout</span>
           </button>
         </div>
       </div>

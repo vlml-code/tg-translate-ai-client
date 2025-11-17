@@ -53,7 +53,8 @@ interface TranslateParams {
   settings: TranslationSettings;
 }
 
-const buildCacheKey = (chatId: string, messageId: number) => `${chatId}:${messageId}`;
+const buildCacheKey = (chatId: string, messageId: number, prompt?: string) =>
+  `${chatId}:${messageId}:${(prompt || '').trim() || 'default'}`;
 
 const translateMessage = async ({ chatId, messageId, text, settings }: TranslateParams) => {
   if (!settings.apiKey) {
@@ -65,7 +66,7 @@ const translateMessage = async ({ chatId, messageId, text, settings }: Translate
     throw new Error('This message has no text to translate.');
   }
 
-  const cacheKey = buildCacheKey(chatId, messageId);
+  const cacheKey = buildCacheKey(chatId, messageId, settings.prompt);
   const cached = cache.get(cacheKey);
   if (cached) {
     return cached;
@@ -96,13 +97,22 @@ const translateMessage = async ({ chatId, messageId, text, settings }: Translate
   });
 
   if (!response.ok) {
+    if (response.status === 404) {
+      throw new Error(
+        'The Grok translation endpoint returned 404. Please confirm your network can reach https://api.x.ai/v1/chat/completions.'
+      );
+    }
     const errorPayload = await response.json().catch(() => ({}));
     const errorMessage = errorPayload?.error?.message || response.statusText;
     throw new Error(`Grok API request failed: ${errorMessage}`);
   }
 
   const payload = await response.json();
-  const translation: string | undefined = payload?.choices?.[0]?.message?.content?.trim();
+  const choice = payload?.choices?.[0]?.message;
+  const content = Array.isArray(choice?.content)
+    ? choice.content.map((item: any) => item?.text).filter(Boolean).join('\n').trim()
+    : choice?.content?.trim();
+  const translation: string | undefined = content && content.length > 0 ? content : undefined;
 
   if (!translation) {
     throw new Error('Grok API did not return any content.');

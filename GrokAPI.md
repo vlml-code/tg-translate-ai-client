@@ -2,7 +2,7 @@
 
 The xAI platform exposes an HTTP API that mirrors the OpenAI Chat Completions shape. Useful reference links:
 
-- Base URL: `https://api.x.ai/v1`  
+- Base URL: `https://api.x.ai/v1`
 - Chat completions endpoint: `POST /chat/completions`
 
 ### Authentication
@@ -30,6 +30,10 @@ curl https://api.x.ai/v1/chat/completions \
         "temperature": 0.2
       }'
 ```
+
+### Connectivity checklist
+
+If the browser console shows `https://api.x.ai/v1/chat/completions ... 404`, verify that the path is reachable outside of the app. A quick `curl -I https://api.x.ai/v1/chat/completions` should return `405 Method Not Allowed`, proving DNS + TLS resolution works and that the endpoint expects `POST`. When testing from browsers, the API replies to `OPTIONS` preflight requests with permissive `Access-Control-Allow-*` headers, so a 404 typically points to a proxy or VPN rewriting the hostname—double-check that your network allows outbound HTTPS to `api.x.ai`.
 
 ### Response shape
 

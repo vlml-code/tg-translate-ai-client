@@ -4,6 +4,15 @@ import { telegramService } from '../services/telegramClient';
 import { translationService } from '../services/translationService';
 import './ChatView.css';
 
+const TranslateIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path
+      d="M4 4H12V6H9.7C10.55 8.06 12 9.79 13.97 11.01L12.82 12.73C11.08 11.64 9.63 10.1 8.64 8.26C7.79 10.09 6.67 11.7 5.35 13H8V15H2V13H3.59C5.39 11.31 6.8 9.29 7.7 7H4V4ZM18.5 10H21L15 22H12.5L13.88 19.28L10 10H12.5L15.25 16.36L18.5 10Z"
+      fill="currentColor"
+    />
+  </svg>
+);
+
 interface ChatViewProps {
   chatId: string;
   chatTitle: string;
@@ -128,13 +137,24 @@ export const ChatView: React.FC<ChatViewProps> = ({
   };
 
   const renderDateSeparator = (currentMsg: MessageInfo, previousMsg: MessageInfo | null) => {
-    if (!previousMsg) return <div className="date-separator">{formatDate(currentMsg.date)}</div>;
+    const label = formatDate(currentMsg.date);
+    if (!previousMsg) {
+      return (
+        <div className="date-separator" data-date={label}>
+          {label}
+        </div>
+      );
+    }
 
     const currentDate = currentMsg.date.toDateString();
     const previousDate = previousMsg.date.toDateString();
 
     if (currentDate !== previousDate) {
-      return <div className="date-separator">{formatDate(currentMsg.date)}</div>;
+      return (
+        <div className="date-separator" data-date={label}>
+          {label}
+        </div>
+      );
     }
 
     return null;
@@ -291,7 +311,8 @@ export const ChatView: React.FC<ChatViewProps> = ({
                     onClick={() => handleTranslateClick(message)}
                     disabled={!canTranslate || translationState?.isLoading}
                   >
-                    {renderTranslateButtonLabel(message.id)}
+                    <TranslateIcon />
+                    <span>{renderTranslateButtonLabel(message.id)}</span>
                   </button>
                   {translationState?.error && (
                     <span className="translation-error">{translationState.error}</span>
