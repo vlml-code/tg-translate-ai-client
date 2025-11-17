@@ -10,10 +10,10 @@
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0"
   },
   "dependencies": {
-    "telegram": "^2.23.10",
+    "big-integer": "^1.6.52",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "big-integer": "^1.6.52"
+    "telegram": "^2.23.10"
   },
   "devDependencies": {
     "@types/react": "^18.3.1",
@@ -25,6 +25,7 @@
     "eslint-plugin-react-hooks": "^4.6.2",
     "eslint-plugin-react-refresh": "^0.4.6",
     "typescript": "^5.4.5",
-    "vite": "^5.2.10"
+    "vite": "^5.2.10",
+    "vite-plugin-node-polyfills": "^0.24.0"
   }
 }
