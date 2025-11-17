@@ -17,6 +17,7 @@ function App() {
   const [settings, setSettings] = useState<TranslationSettings>(
     settingsService.getSettings()
   );
+  const [startupError, setStartupError] = useState<string | null>(null);
 
   useEffect(() => {
     initializeTelegram();
@@ -27,8 +28,19 @@ function App() {
       await telegramService.initialize();
       const authorized = await telegramService.isAuthorized();
       setIsAuthenticated(authorized);
+      setStartupError(null);
     } catch (error) {
       console.error('Failed to initialize Telegram client:', error);
+      const message = (error as Error)?.message || 'Unknown error';
+      if (message === 'AUTH_KEY_DUPLICATED') {
+        setStartupError(
+          'We detected an active Telegram session from another device. The cached key was cleared so you can request a fresh login code. If codes still do not arrive, terminate other sessions from Telegram > Settings > Devices.'
+        );
+      } else {
+        setStartupError(
+          'Unable to start the Telegram client. Please verify your API credentials and try again.'
+        );
+      }
     } finally {
       setIsInitializing(false);
     }
@@ -58,7 +70,12 @@ function App() {
   }
 
   if (!isAuthenticated) {
-    return <AuthForm onAuthenticated={handleAuthenticated} />;
+    return (
+      <AuthForm
+        onAuthenticated={handleAuthenticated}
+        startupError={startupError || undefined}
+      />
+    );
   }
 
   return (

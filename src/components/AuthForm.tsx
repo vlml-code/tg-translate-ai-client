@@ -4,11 +4,15 @@ import './AuthForm.css';
 
 interface AuthFormProps {
   onAuthenticated: () => void;
+  startupError?: string;
 }
 
 type AuthStep = 'phone' | 'code' | 'password';
 
-export const AuthForm: React.FC<AuthFormProps> = ({ onAuthenticated }) => {
+export const AuthForm: React.FC<AuthFormProps> = ({
+  onAuthenticated,
+  startupError,
+}) => {
   const [step, setStep] = useState<AuthStep>('phone');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [code, setCode] = useState('');
@@ -69,6 +73,12 @@ export const AuthForm: React.FC<AuthFormProps> = ({ onAuthenticated }) => {
     <div className="auth-container">
       <div className="auth-card">
         <h1>Telegram Login</h1>
+
+        {startupError && (
+          <div className="auth-alert">
+            <strong>Heads up:</strong> {startupError}
+          </div>
+        )}
 
         {step === 'phone' && (
           <form onSubmit={handlePhoneSubmit}>

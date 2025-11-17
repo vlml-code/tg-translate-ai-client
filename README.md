@@ -160,6 +160,7 @@ tg-translate-ai-client/
 - Make sure your API ID and API Hash are correct in `.env`
 - Check your internet connection
 - Ensure you're using Node.js 18+
+- If you see `AUTH_KEY_DUPLICATED`, Telegram rejected the cached session because the same account is logged in elsewhere. The web client clears the cached key automatically so you can request a fresh login code, but you may need to terminate other sessions from Telegram → Settings → Devices before new codes arrive.
 
 ### "Failed to send code"
 - Verify your phone number is in international format (+1234567890)
