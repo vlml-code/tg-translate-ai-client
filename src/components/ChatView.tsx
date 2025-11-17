@@ -1,19 +1,35 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { MessageInfo } from '../types';
+import { MessageInfo, TranslationSettings } from '../types';
 import { telegramService } from '../services/telegramClient';
+import { translationService } from '../services/translationService';
 import './ChatView.css';
 
 interface ChatViewProps {
   chatId: string;
   chatTitle: string;
+  translationSettings: TranslationSettings;
 }
 
-export const ChatView: React.FC<ChatViewProps> = ({ chatId, chatTitle }) => {
+interface TranslationState {
+  [messageId: number]: {
+    translatedText?: string;
+    isShowingTranslation: boolean;
+    isLoading: boolean;
+    error?: string;
+  };
+}
+
+export const ChatView: React.FC<ChatViewProps> = ({
+  chatId,
+  chatTitle,
+  translationSettings
+}) => {
   const [messages, setMessages] = useState<MessageInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [error, setError] = useState('');
+  const [translations, setTranslations] = useState<TranslationState>({});
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const isInitialLoad = useRef(true);
 
@@ -21,6 +37,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ chatId, chatTitle }) => {
   useEffect(() => {
     loadMessages(true);
     isInitialLoad.current = true;
+    setTranslations({});
   }, [chatId]);
 
   // Scroll to bottom on initial load
@@ -123,6 +140,86 @@ export const ChatView: React.FC<ChatViewProps> = ({ chatId, chatTitle }) => {
     return null;
   };
 
+  const handleTranslateClick = async (message: MessageInfo) => {
+    if (!message.text?.trim()) {
+      return;
+    }
+
+    const state = translations[message.id];
+    if (state?.isLoading) {
+      return;
+    }
+
+    if (state?.translatedText) {
+      setTranslations((prev) => ({
+        ...prev,
+        [message.id]: {
+          ...state,
+          isShowingTranslation: !state.isShowingTranslation,
+          error: undefined
+        }
+      }));
+      return;
+    }
+
+    setTranslations((prev) => ({
+      ...prev,
+      [message.id]: {
+        translatedText: state?.translatedText,
+        isShowingTranslation: state?.isShowingTranslation ?? false,
+        isLoading: true,
+        error: undefined
+      }
+    }));
+
+    try {
+      const translatedText = await translationService.translateMessage({
+        chatId,
+        messageId: message.id,
+        text: message.text,
+        settings: translationSettings
+      });
+
+      setTranslations((prev) => ({
+        ...prev,
+        [message.id]: {
+          translatedText,
+          isShowingTranslation: true,
+          isLoading: false,
+          error: undefined
+        }
+      }));
+    } catch (err: any) {
+      setTranslations((prev) => ({
+        ...prev,
+        [message.id]: {
+          translatedText: state?.translatedText,
+          isShowingTranslation: false,
+          isLoading: false,
+          error: err?.message || 'Failed to translate this message.'
+        }
+      }));
+    }
+  };
+
+  const renderTranslateButtonLabel = (messageId: number) => {
+    const state = translations[messageId];
+
+    if (state?.isShowingTranslation) {
+      return 'Show original';
+    }
+
+    if (state?.translatedText) {
+      return 'Show translation';
+    }
+
+    if (state?.isLoading) {
+      return 'Translating...';
+    }
+
+    return 'Translate';
+  };
+
   if (loading) {
     return (
       <div className="chat-view">
@@ -168,20 +265,42 @@ export const ChatView: React.FC<ChatViewProps> = ({ chatId, chatTitle }) => {
           <div className="no-more-messages">No more messages</div>
         )}
 
-        {messages.map((message, index) => (
-          <React.Fragment key={message.id}>
-            {renderDateSeparator(message, index > 0 ? messages[index - 1] : null)}
-            <div className={`message ${message.isOutgoing ? 'outgoing' : 'incoming'}`}>
-              {!message.isOutgoing && (
-                <div className="message-sender">{message.senderName}</div>
-              )}
-              <div className="message-bubble">
-                <div className="message-text">{message.text || '[Media]'}</div>
-                <div className="message-time">{formatTime(message.date)}</div>
+        {messages.map((message, index) => {
+          const translationState = translations[message.id];
+          const canTranslate = Boolean(message.text?.trim());
+
+          return (
+            <React.Fragment key={message.id}>
+              {renderDateSeparator(message, index > 0 ? messages[index - 1] : null)}
+              <div className={`message ${message.isOutgoing ? 'outgoing' : 'incoming'}`}>
+                {!message.isOutgoing && (
+                  <div className="message-sender">{message.senderName}</div>
+                )}
+                <div className="message-bubble">
+                  <div className="message-text">{message.text || '[Media]'}</div>
+                  {translationState?.isShowingTranslation && translationState.translatedText && (
+                    <div className="message-translation">
+                      {translationState.translatedText}
+                    </div>
+                  )}
+                  <div className="message-time">{formatTime(message.date)}</div>
+                </div>
+                <div className="message-actions">
+                  <button
+                    className="translate-btn"
+                    onClick={() => handleTranslateClick(message)}
+                    disabled={!canTranslate || translationState?.isLoading}
+                  >
+                    {renderTranslateButtonLabel(message.id)}
+                  </button>
+                  {translationState?.error && (
+                    <span className="translation-error">{translationState.error}</span>
+                  )}
+                </div>
               </div>
-            </div>
-          </React.Fragment>
-        ))}
+            </React.Fragment>
+          );
+        })}
       </div>
     </div>
   );

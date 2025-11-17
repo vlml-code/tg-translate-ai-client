@@ -22,15 +22,32 @@
   color: #333;
 }
 
+.chat-list-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.settings-btn,
 .logout-btn {
   padding: 8px 16px;
-  background: #dc3545;
   color: white;
   border: none;
   border-radius: 6px;
   cursor: pointer;
   font-size: 14px;
   transition: background 0.3s;
+}
+
+.settings-btn {
+  background: #4b5563;
+}
+
+.settings-btn:hover {
+  background: #374151;
+}
+
+.logout-btn {
+  background: #dc3545;
 }
 
 .logout-btn:hover {
