@@ -1,8 +1,12 @@
+import { APICallError, generateText } from 'ai';
+import { createXai } from '@ai-sdk/xai';
+
 import { TranslationSettings } from '../types';
 
-const API_URL = 'https://api.x.ai/v1/chat/completions';
-const MODEL = 'grok-beta';
+const MODEL = 'grok-4-fast';
 const CACHE_STORAGE_KEY = 'messageTranslations';
+const DEFAULT_PROMPT =
+  'Translate the following Telegram message into English while preserving tone, intent, emojis, and formatting.';
 
 type CacheRecord = Record<string, string>;
 
@@ -72,47 +76,35 @@ const translateMessage = async ({ chatId, messageId, text, settings }: Translate
     return cached;
   }
 
-  const response = await fetch(API_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${settings.apiKey}`
-    },
-    body: JSON.stringify({
-      model: MODEL,
-      temperature: 0.2,
-      messages: [
-        {
-          role: 'system',
-          content:
-            settings.prompt ||
-            'Translate the following message into English while keeping the tone and intent.'
-        },
-        {
-          role: 'user',
-          content: trimmedText
-        }
-      ]
-    })
+  const xai = createXai({
+    apiKey: settings.apiKey
   });
 
-  if (!response.ok) {
-    if (response.status === 404) {
-      throw new Error(
-        'The Grok translation endpoint returned 404. Please confirm your network can reach https://api.x.ai/v1/chat/completions.'
-      );
-    }
-    const errorPayload = await response.json().catch(() => ({}));
-    const errorMessage = errorPayload?.error?.message || response.statusText;
-    throw new Error(`Grok API request failed: ${errorMessage}`);
-  }
+  let translation: string | undefined;
 
-  const payload = await response.json();
-  const choice = payload?.choices?.[0]?.message;
-  const content = Array.isArray(choice?.content)
-    ? choice.content.map((item: any) => item?.text).filter(Boolean).join('\n').trim()
-    : choice?.content?.trim();
-  const translation: string | undefined = content && content.length > 0 ? content : undefined;
+  try {
+    const result = await generateText({
+      model: xai(MODEL),
+      system: settings.prompt?.trim() || DEFAULT_PROMPT,
+      prompt: trimmedText
+    });
+    translation = result.text?.trim();
+  } catch (error) {
+    if (APICallError.isInstance(error)) {
+      if (error.statusCode === 404) {
+        throw new Error(
+          'The Grok translation endpoint returned 404. Please confirm your API key is valid and that https://api.x.ai is reachable.'
+        );
+      }
+
+      const responseDetails = error.statusCode ? ` (${error.statusCode})` : '';
+      throw new Error(`Grok API request failed${responseDetails}: ${error.message}`);
+    }
+
+    throw error instanceof Error
+      ? new Error(`Grok translation failed: ${error.message}`)
+      : new Error('Grok translation failed due to an unknown error.');
+  }
 
   if (!translation) {
     throw new Error('Grok API did not return any content.');
