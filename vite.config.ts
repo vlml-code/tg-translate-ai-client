@@ -8,6 +8,6 @@ export default defineConfig({
     port: 3000,
   },
   optimizeDeps: {
-    exclude: ['telegram']
+    include: ['telegram', 'telegram/sessions', 'telegram/Password']
   }
 })
