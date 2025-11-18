@@ -7,12 +7,14 @@ interface ChatListProps {
   onChatSelect: (chatId: string, chatTitle: string) => void;
   selectedChatId: string | null;
   onOpenSettings: () => void;
+  onOpenArchive: () => void;
 }
 
 export const ChatList: React.FC<ChatListProps> = ({
   onChatSelect,
   selectedChatId,
-  onOpenSettings
+  onOpenSettings,
+  onOpenArchive
 }) => {
   const [chats, setChats] = useState<ChatInfo[]>([]);
   const [loading, setLoading] = useState(true);
@@ -88,6 +90,10 @@ export const ChatList: React.FC<ChatListProps> = ({
           <p>Translate with Grok</p>
         </div>
         <div className="chat-list-actions">
+          <button className="archive-btn" onClick={onOpenArchive}>
+            <span aria-hidden="true">📁</span>
+            <span>Archive</span>
+          </button>
           <button className="settings-btn" onClick={onOpenSettings}>
             <span aria-hidden="true">⚙️</span>
             <span>Settings</span>

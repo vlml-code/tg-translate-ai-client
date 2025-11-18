@@ -41,6 +41,7 @@
   gap: 8px;
 }
 
+.archive-btn,
 .settings-btn,
 .logout-btn {
   padding: 8px 14px;
@@ -56,6 +57,12 @@
   background: transparent;
 }
 
+.archive-btn {
+  background: rgba(82, 136, 193, 0.18);
+  color: #8fc5ff;
+  border: 1px solid rgba(82, 136, 193, 0.35);
+}
+
 .settings-btn {
   background: rgba(255, 255, 255, 0.08);
   color: var(--tg-text-primary);
@@ -68,6 +75,7 @@
   border: 1px solid rgba(220, 53, 69, 0.35);
 }
 
+.archive-btn:hover,
 .settings-btn:hover,
 .logout-btn:hover {
   transform: translateY(-1px);
