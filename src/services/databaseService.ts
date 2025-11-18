@@ -49,22 +49,47 @@ class DatabaseService {
    */
   async initialize(): Promise<void> {
     return new Promise((resolve, reject) => {
+      // Close existing connection if any
+      if (this.db) {
+        this.db.close();
+        this.db = null;
+      }
+
       const request = indexedDB.open(DB_NAME, DB_VERSION);
 
       request.onerror = () => {
-        reject(new Error('Failed to open database'));
+        console.error('Database open error:', request.error);
+        reject(new Error(`Failed to open database: ${request.error?.message || 'Unknown error'}`));
+      };
+
+      request.onblocked = () => {
+        console.warn('Database upgrade blocked. Please close all other tabs with this app.');
       };
 
       request.onsuccess = () => {
         this.db = request.result;
+
+        // Handle database errors and blocked events
+        this.db.onerror = (event) => {
+          console.error('Database error:', event);
+        };
+
+        this.db.onversionchange = () => {
+          console.log('Database version changed, closing connection');
+          this.db?.close();
+          this.db = null;
+        };
+
         resolve();
       };
 
       request.onupgradeneeded = (event) => {
+        console.log(`Upgrading database from version ${event.oldVersion} to ${event.newVersion}`);
         const db = (event.target as IDBOpenDBRequest).result;
 
         // Create savedChannels store
         if (!db.objectStoreNames.contains(STORES.SAVED_CHANNELS)) {
+          console.log('Creating savedChannels store');
           const channelStore = db.createObjectStore(STORES.SAVED_CHANNELS, { keyPath: 'id' });
           channelStore.createIndex('isChecked', 'isChecked', { unique: false });
           channelStore.createIndex('tag', 'tag', { unique: false });
@@ -72,6 +97,7 @@ class DatabaseService {
 
         // Create archivedMessages store
         if (!db.objectStoreNames.contains(STORES.ARCHIVED_MESSAGES)) {
+          console.log('Creating archivedMessages store');
           const messageStore = db.createObjectStore(STORES.ARCHIVED_MESSAGES, {
             keyPath: 'id',
             autoIncrement: true
@@ -81,8 +107,9 @@ class DatabaseService {
           messageStore.createIndex('chatId_date', ['chatId', 'date'], { unique: false });
         }
 
-        // Create generatedDigests store
+        // Create generatedDigests store (new in v2)
         if (!db.objectStoreNames.contains(STORES.GENERATED_DIGESTS)) {
+          console.log('Creating generatedDigests store');
           const digestStore = db.createObjectStore(STORES.GENERATED_DIGESTS, {
             keyPath: 'id',
             autoIncrement: true
@@ -91,6 +118,8 @@ class DatabaseService {
           digestStore.createIndex('date', 'date', { unique: false });
           digestStore.createIndex('tag_date', ['tag', 'date'], { unique: false });
         }
+
+        console.log('Database upgrade completed');
       };
     });
   }

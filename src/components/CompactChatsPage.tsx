@@ -55,31 +55,58 @@ export function CompactChatsPage({ onBack }: CompactChatsPageProps) {
       setLoading(true);
       setError('');
 
-      // Initialize database
-      await databaseService.initialize();
+      console.log('Starting to load data...');
+
+      // Initialize database with timeout
+      console.log('Initializing database...');
+      try {
+        await Promise.race([
+          databaseService.initialize(),
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('Database initialization timeout')), 10000)
+          )
+        ]);
+        console.log('Database initialized successfully');
+      } catch (dbErr) {
+        console.error('Database initialization failed:', dbErr);
+        throw new Error(
+          'Failed to initialize database. If the issue persists, please close all other tabs and refresh.'
+        );
+      }
 
       // Load chats from Telegram
+      console.log('Loading chats from Telegram...');
       const chatList = await telegramService.getChats();
+      console.log(`Loaded ${chatList.length} chats`);
       setChats(chatList);
 
       // Load saved channels from database
+      console.log('Loading saved channels...');
       const saved = await databaseService.getAllChannels();
       const savedMap = new Map<string, SavedChannel>();
       saved.forEach((channel) => {
         savedMap.set(channel.id, channel);
       });
       setSavedChannels(savedMap);
+      console.log(`Loaded ${saved.length} saved channels`);
 
       // Load archived dates
+      console.log('Loading archived dates...');
       const dates = await databaseService.getArchivedDates();
       setArchivedDates(dates);
+      console.log(`Loaded ${dates.length} archived dates`);
 
       // Load digest dates
+      console.log('Loading digest dates...');
       const digestDatesData = await databaseService.getDigestDates();
       setDigestDates(digestDatesData);
+      console.log(`Loaded ${digestDatesData.length} digest dates`);
+
+      console.log('Data loading completed successfully');
     } catch (err) {
       console.error('Failed to load data:', err);
-      setError('Failed to load chats and saved channels');
+      const errorMessage = err instanceof Error ? err.message : 'Failed to load chats and saved channels';
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -381,7 +408,18 @@ export function CompactChatsPage({ onBack }: CompactChatsPageProps) {
         <p className="subtitle">Select channels to monitor for digest</p>
       </div>
 
-      {error && <div className="error-message">{error}</div>}
+      {error && (
+        <div className="error-message">
+          {error}
+          <button
+            onClick={() => loadData()}
+            className="retry-btn"
+            style={{ marginLeft: '10px', padding: '4px 12px', cursor: 'pointer' }}
+          >
+            Retry
+          </button>
+        </div>
+      )}
 
       {loading ? (
         <div className="loading-state">Loading channels...</div>
