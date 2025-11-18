@@ -41,9 +41,31 @@ export interface TranslationSettings {
   apiKey: string;
   prompt: string;
   simplifyPrompt: string;
+  segmentPrompt: string;
   deepseekApiKey: string;
   digestPrompt: string;
   digestTargetChannelId: string;
+}
+
+// Dictionary entry for a Chinese word with multiple possible meanings
+export interface DictionaryEntry {
+  word: string;           // Chinese characters
+  pinyin: string;         // Pinyin with tone marks
+  meanings: string[];     // Multiple English translations
+  addedAt: number;        // Timestamp when first added
+  usageCount: number;     // How many times this word was encountered
+}
+
+// AI segmentation result for a single word/segment
+export interface SegmentResult {
+  word: string;           // Chinese characters
+  pinyin: string;         // Pinyin with tone marks
+  translation: string;    // English translation
+}
+
+// AI response format for segmentation
+export interface AISegmentationResponse {
+  segments: SegmentResult[];
 }
 
 export type TelegramMessage = Api.Message;

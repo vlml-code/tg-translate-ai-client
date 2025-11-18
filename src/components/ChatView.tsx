@@ -1,8 +1,9 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { MessageInfo, TranslationSettings } from '../types';
+import { MessageInfo, TranslationSettings, SegmentResult } from '../types';
 import { telegramService } from '../services/telegramClient';
 import { translationService } from '../services/translationService';
 import { analyzeChineseText, containsChinese } from '../services/dictionaryService';
+import { segmentText } from '../services/aiSegmentation';
 import './ChatView.css';
 
 const TranslateIcon = () => (
@@ -18,6 +19,18 @@ const SimplifyIcon = () => (
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
     <path
       d="M4 7H20M4 12H12M4 17H16"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
+const SegmentIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path
+      d="M3 6h18M3 12h18M3 18h18M9 6v12M15 6v12"
       stroke="currentColor"
       strokeWidth="2"
       strokeLinecap="round"
@@ -97,10 +110,11 @@ const MessageTextWithPinyin: React.FC<{ text: string; messageKey: string | numbe
   );
 };
 
-type AugmentationType = 'translation' | 'simplification';
+type AugmentationType = 'translation' | 'simplification' | 'segmentation';
 
 interface AugmentationState {
   content?: string;
+  segments?: any[]; // For segmentation results
   isShowing: boolean;
   isLoading: boolean;
   error?: string;
@@ -109,6 +123,7 @@ interface AugmentationState {
 interface MessageAugmentations {
   translation: AugmentationState;
   simplification: AugmentationState;
+  segmentation: AugmentationState;
 }
 
 type TranslationState = Record<number, MessageAugmentations>;
@@ -122,7 +137,8 @@ const createAugmentationState = (): AugmentationState => ({
 
 const createMessageAugmentations = (): MessageAugmentations => ({
   translation: createAugmentationState(),
-  simplification: createAugmentationState()
+  simplification: createAugmentationState(),
+  segmentation: createAugmentationState()
 });
 
 export const ChatView: React.FC<ChatViewProps> = ({
@@ -269,7 +285,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
       return;
     }
 
-    if (augmentationState.content) {
+    if (augmentationState.content || augmentationState.segments) {
       setTranslations((prev) => {
         const prevState = prev[message.id] || createMessageAugmentations();
         return {
@@ -303,20 +319,32 @@ export const ChatView: React.FC<ChatViewProps> = ({
     });
 
     try {
-      const content =
-        type === 'translation'
-          ? await translationService.translateMessage({
-              chatId,
-              messageId: message.id,
-              text: message.text,
-              settings: translationSettings
-            })
-          : await translationService.simplifyMessage({
-              chatId,
-              messageId: message.id,
-              text: message.text,
-              settings: translationSettings
-            });
+      let content: string | undefined;
+      let segments: SegmentResult[] | undefined;
+
+      if (type === 'segmentation') {
+        // Use AI segmentation with local dictionary learning
+        segments = await segmentText(
+          message.text,
+          translationSettings.apiKey,
+          translationSettings.segmentPrompt
+        );
+      } else {
+        content =
+          type === 'translation'
+            ? await translationService.translateMessage({
+                chatId,
+                messageId: message.id,
+                text: message.text,
+                settings: translationSettings
+              })
+            : await translationService.simplifyMessage({
+                chatId,
+                messageId: message.id,
+                text: message.text,
+                settings: translationSettings
+              });
+      }
 
       setTranslations((prev) => {
         const prevState = prev[message.id] || createMessageAugmentations();
@@ -327,6 +355,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
             [type]: {
               ...prevState[type],
               content,
+              segments,
               isShowing: true,
               isLoading: false,
               error: undefined
@@ -359,15 +388,21 @@ export const ChatView: React.FC<ChatViewProps> = ({
       return 'Show original';
     }
 
-    if (state?.content) {
-      return type === 'translation' ? 'Show translation' : 'Show simplified';
+    if (state?.content || state?.segments) {
+      if (type === 'translation') return 'Show translation';
+      if (type === 'simplification') return 'Show simplified';
+      return 'Show segmented';
     }
 
     if (state?.isLoading) {
-      return type === 'translation' ? 'Translating...' : 'Simplifying...';
+      if (type === 'translation') return 'Translating...';
+      if (type === 'simplification') return 'Simplifying...';
+      return 'Segmenting...';
     }
 
-    return type === 'translation' ? 'Translate' : 'Simplify';
+    if (type === 'translation') return 'Translate';
+    if (type === 'simplification') return 'Simplify';
+    return 'Segment';
   };
 
   if (loading) {
@@ -420,6 +455,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
           const canTranslate = Boolean(message.text?.trim());
           const translationContent = translationState?.translation;
           const simplificationContent = translationState?.simplification;
+          const segmentationContent = translationState?.segmentation;
 
           return (
             <React.Fragment key={message.id}>
@@ -447,6 +483,19 @@ export const ChatView: React.FC<ChatViewProps> = ({
                       />
                     </div>
                   )}
+                  {segmentationContent?.isShowing && segmentationContent.segments && (
+                    <div className="message-segmented">
+                      {segmentationContent.segments.map((seg: SegmentResult, idx: number) => (
+                        <span
+                          key={`seg-${message.id}-${idx}`}
+                          className="segmented-word"
+                          title={`${seg.pinyin}\n${seg.translation}`}
+                        >
+                          {seg.word}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                   <div className="message-time">{formatTime(message.date)}</div>
                 </div>
                 <div className="message-actions">
@@ -471,6 +520,17 @@ export const ChatView: React.FC<ChatViewProps> = ({
                   </button>
                   {simplificationContent?.error && (
                     <span className="translation-error">{simplificationContent.error}</span>
+                  )}
+                  <button
+                    className="translate-btn segment"
+                    onClick={() => handleAugmentationClick(message, 'segmentation')}
+                    disabled={!canTranslate || segmentationContent?.isLoading}
+                  >
+                    <SegmentIcon />
+                    <span>{renderActionButtonLabel(message.id, 'segmentation')}</span>
+                  </button>
+                  {segmentationContent?.error && (
+                    <span className="translation-error">{segmentationContent.error}</span>
                   )}
                 </div>
               </div>

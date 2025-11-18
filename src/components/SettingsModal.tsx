@@ -98,6 +98,19 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           </label>
 
           <label className="form-field">
+            <span>Segmentation prompt</span>
+            <textarea
+              value={settings.segmentPrompt}
+              onChange={(e) => setSettings({ ...settings, segmentPrompt: e.target.value })}
+              rows={6}
+            />
+            <small>
+              Used when you tap <strong>Segment</strong>. Must return valid JSON with word segmentation and translations.
+              The AI will learn from your usage and build a local dictionary.
+            </small>
+          </label>
+
+          <label className="form-field">
             <span>DeepSeek API key</span>
             <input
               type="password"

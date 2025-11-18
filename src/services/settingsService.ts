@@ -7,6 +7,17 @@ const defaultSettings: TranslationSettings = {
   prompt: 'Translate the following message into English while keeping the tone and intent.',
   simplifyPrompt:
     'Rewrite the following Chinese text using only words from HSK1 (or, if necessary, HSK2) while preserving the overall meaning. Return only simplified Chinese text.',
+  segmentPrompt: `Segment the following Chinese text into words and provide English translations. Return ONLY valid JSON with no additional text or markdown formatting.
+
+Format:
+{
+  "segments": [
+    {"word": "中国", "pinyin": "zhōngguó", "translation": "China"},
+    {"word": "菜", "pinyin": "cài", "translation": "food; dish"}
+  ]
+}
+
+Text to segment:`,
   deepseekApiKey: '',
   digestPrompt:
     'Based on the following messages, create a concise digest in English summarizing the key information, main topics, and important updates. Group related information together and highlight any action items or significant developments.',
@@ -29,6 +40,7 @@ const loadSettings = (): TranslationSettings => {
       apiKey: parsed.apiKey || '',
       prompt: parsed.prompt || defaultSettings.prompt,
       simplifyPrompt: parsed.simplifyPrompt || defaultSettings.simplifyPrompt,
+      segmentPrompt: parsed.segmentPrompt || defaultSettings.segmentPrompt,
       deepseekApiKey: parsed.deepseekApiKey || '',
       digestPrompt: parsed.digestPrompt || defaultSettings.digestPrompt,
       digestTargetChannelId: parsed.digestTargetChannelId || ''
