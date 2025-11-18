@@ -45,23 +45,23 @@ function getDominantTone(pinyinNumArray: string[]): string {
  */
 export async function analyzeChineseText(text: string): Promise<SegmentedWord[]> {
   // 1. Segment Chinese into words (not characters!)
-  // Use mode: 'all' to get the most complete segmentation
-  const segmentResult = segment(text, { mode: 'all' });
+  // segment() returns array of { origin: '硕士', result: 'shuòshì' } objects
+  const segmentResult = segment(text);
 
-  // segment() returns a string with spaces separating words
-  // Split by spaces to get individual words
+  // Extract the 'origin' (Chinese word) from each segment object
   let words: string[];
-  if (typeof segmentResult === 'string') {
-    words = segmentResult.split(/\s+/).filter(w => w.length > 0);
-  } else if (Array.isArray(segmentResult)) {
-    // Handle array return (shouldn't happen with default mode, but just in case)
+  if (Array.isArray(segmentResult)) {
     words = segmentResult.map((item: any) => {
-      if (typeof item === 'string') return item;
-      if (typeof item === 'object' && item !== null) {
-        return item.origin || item.result || String(item);
+      // Extract origin (the Chinese text) from each segment
+      if (typeof item === 'object' && item !== null && 'origin' in item) {
+        return item.origin;
       }
-      return String(item);
+      // Fallback to string if format is different
+      return typeof item === 'string' ? item : String(item);
     });
+  } else if (typeof segmentResult === 'string') {
+    // If somehow it returns a string, split by spaces
+    words = segmentResult.split(/\s+/).filter(w => w.length > 0);
   } else {
     // Fallback: treat as single word
     words = [text];
