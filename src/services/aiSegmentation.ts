@@ -1,6 +1,10 @@
+import { generateText } from 'ai';
+import { createXai } from '@ai-sdk/xai';
 import { pinyin } from 'pinyin-pro';
 import { AISegmentationResponse, SegmentResult } from '../types';
 import { localDictionary } from './localDictionary';
+
+const MODEL = 'grok-beta';
 
 const DEFAULT_SEGMENT_PROMPT = `Segment the following Chinese text into words and provide English translations. Return ONLY valid JSON with no additional text or markdown formatting.
 
@@ -31,37 +35,21 @@ async function segmentSentenceWithAI(
   apiKey: string,
   prompt: string
 ): Promise<SegmentResult[]> {
-  const fullPrompt = `${prompt}\n\n${sentence}`;
+  if (!apiKey?.trim()) {
+    throw new Error('Please set a Grok API key in Settings before using segmentation.');
+  }
+
+  const xai = createXai({ apiKey });
 
   try {
-    const response = await fetch('https://api.x.ai/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: 'grok-beta',
-        messages: [
-          {
-            role: 'system',
-            content: 'You are a Chinese language expert. Always respond with valid JSON only, no markdown or additional text.',
-          },
-          {
-            role: 'user',
-            content: fullPrompt,
-          },
-        ],
-        temperature: 0.3,
-      }),
+    const result = await generateText({
+      model: xai(MODEL),
+      system: 'You are a Chinese language expert. Always respond with valid JSON only, no markdown or additional text.',
+      prompt: `${prompt}\n\n${sentence}`,
+      temperature: 0.3,
     });
 
-    if (!response.ok) {
-      throw new Error(`API request failed: ${response.statusText}`);
-    }
-
-    const data = await response.json();
-    const content = data.choices[0]?.message?.content || '';
+    const content = result.text?.trim() || '';
 
     // Parse JSON response, removing markdown code blocks if present
     const jsonMatch = content.match(/\{[\s\S]*\}/);
