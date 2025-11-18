@@ -238,8 +238,35 @@ export class TelegramService {
         })
       );
 
-      console.log('Discussion Result:', discussionResult);
+      console.log('=== FULL DISCUSSION RESULT ===');
+      console.log('Discussion Result keys:', Object.keys(discussionResult));
+      console.log('Full Discussion Result:', JSON.stringify(discussionResult, (_key, value) => {
+        // Convert BigInt to string for JSON serialization
+        if (typeof value === 'bigint') {
+          return value.toString();
+        }
+        return value;
+      }, 2));
+
       console.log('Messages count:', discussionResult.messages?.length);
+      console.log('readInboxMaxId:', (discussionResult as any).readInboxMaxId);
+      console.log('readOutboxMaxId:', (discussionResult as any).readOutboxMaxId);
+      console.log('maxId:', (discussionResult as any).maxId);
+      console.log('unreadCount:', (discussionResult as any).unreadCount);
+
+      // Log all messages
+      if (discussionResult.messages) {
+        discussionResult.messages.forEach((msg, idx) => {
+          if (msg instanceof Api.Message) {
+            console.log(`Message ${idx}:`, {
+              id: msg.id,
+              peerId: msg.peerId?.className,
+              replyTo: msg.replyTo,
+              text: msg.message?.substring(0, 50),
+            });
+          }
+        });
+      }
 
       // Extract the discussion group message
       if (!discussionResult.messages || discussionResult.messages.length === 0) {
