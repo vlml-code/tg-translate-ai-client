@@ -22,8 +22,10 @@ export const FlashcardModal: React.FC<FlashcardModalProps> = ({ isOpen, onClose 
 
   const loadReviewSession = () => {
     const words = localDictionary.getWordsForReview();
+    // Randomize the order to prevent pattern recognition
+    const shuffled = [...words].sort(() => Math.random() - 0.5);
     const stats = localDictionary.getReviewStats();
-    setWordsToReview(words);
+    setWordsToReview(shuffled);
     setStats(stats);
     setCurrentIndex(0);
     setShowAnswer(false);
@@ -48,6 +50,34 @@ export const FlashcardModal: React.FC<FlashcardModalProps> = ({ isOpen, onClose 
 
   const toggleAnswer = () => {
     setShowAnswer(!showAnswer);
+  };
+
+  // Calculate interval previews based on current word state
+  const getIntervalPreview = (quality: number): string => {
+    if (!currentWord) return '';
+
+    const isNew = currentWord.reviewCount === 0;
+    const isLearning = currentWord.reviewCount === 1;
+
+    if (quality === 1) {
+      return '10 min';
+    } else if (quality === 3) {
+      if (isNew) return '12 hrs';
+      if (isLearning) return '1 day';
+      const days = Math.round(currentWord.interval * 1.2);
+      return days === 1 ? '1 day' : `${days} days`;
+    } else if (quality === 4) {
+      if (isNew) return '1 day';
+      if (isLearning) return '6 days';
+      const days = Math.round(currentWord.interval * currentWord.easeFactor);
+      return days === 1 ? '1 day' : `${days} days`;
+    } else if (quality === 5) {
+      if (isNew) return '4 days';
+      if (isLearning) return '10 days';
+      const days = Math.round(currentWord.interval * currentWord.easeFactor * 1.3);
+      return days === 1 ? '1 day' : `${days} days`;
+    }
+    return '';
   };
 
   if (!isOpen) {
@@ -122,36 +152,28 @@ export const FlashcardModal: React.FC<FlashcardModalProps> = ({ isOpen, onClose 
                     onClick={() => handleQualityResponse(1)}
                   >
                     <span className="btn-label">Again</span>
-                    <span className="btn-interval">&lt;1 day</span>
+                    <span className="btn-interval">{getIntervalPreview(1)}</span>
                   </button>
                   <button
                     className="quality-btn hard"
                     onClick={() => handleQualityResponse(3)}
                   >
                     <span className="btn-label">Hard</span>
-                    <span className="btn-interval">1 day</span>
+                    <span className="btn-interval">{getIntervalPreview(3)}</span>
                   </button>
                   <button
                     className="quality-btn good"
                     onClick={() => handleQualityResponse(4)}
                   >
                     <span className="btn-label">Good</span>
-                    <span className="btn-interval">
-                      {currentWord?.reviewCount === 0 ? '1 day' :
-                       currentWord?.reviewCount === 1 ? '6 days' :
-                       `${Math.round(currentWord?.interval * currentWord?.easeFactor)} days`}
-                    </span>
+                    <span className="btn-interval">{getIntervalPreview(4)}</span>
                   </button>
                   <button
                     className="quality-btn easy"
                     onClick={() => handleQualityResponse(5)}
                   >
                     <span className="btn-label">Easy</span>
-                    <span className="btn-interval">
-                      {currentWord?.reviewCount === 0 ? '1 day' :
-                       currentWord?.reviewCount === 1 ? '6 days' :
-                       `${Math.round(currentWord?.interval * currentWord?.easeFactor * 1.3)} days`}
-                    </span>
+                    <span className="btn-interval">{getIntervalPreview(5)}</span>
                   </button>
                 </div>
               </div>

@@ -192,8 +192,8 @@ class LocalDictionary {
   }
 
   /**
-   * Update word after review with SRS algorithm (SM-2)
-   * quality: 0-5 (0=complete blackout, 5=perfect response)
+   * Update word after review with enhanced SRS algorithm
+   * quality: 1=Again, 3=Hard, 4=Good, 5=Easy
    */
   updateAfterReview(word: string, quality: number): void {
     const cache = this.loadCache();
@@ -202,32 +202,60 @@ class LocalDictionary {
     if (!entry) return;
 
     const now = Date.now();
-    entry.reviewCount++;
+    const wasNew = entry.reviewCount === 0;
+    const wasLearning = entry.reviewCount === 1;
+
     entry.lastReviewed = now;
 
-    // SM-2 Algorithm
-    if (quality >= 3) {
-      // Correct response
+    // Enhanced SM-2 Algorithm with quality-based intervals
+    if (quality === 1) {
+      // Again - short interval, reset to learning
+      entry.interval = 10 / (24 * 60); // 10 minutes in days
+      entry.reviewCount = 0; // Reset to new
+    } else if (quality === 3) {
+      // Hard - conservative intervals
+      if (wasNew) {
+        entry.interval = 0.5; // 12 hours
+        entry.reviewCount = 1;
+      } else if (wasLearning) {
+        entry.interval = 1; // 1 day
+        entry.reviewCount = 2;
+      } else {
+        entry.interval = Math.max(1, entry.interval * 1.2); // Increase by 20%
+        entry.reviewCount++;
+      }
+      // Decrease ease factor for hard cards
+      entry.easeFactor = Math.max(1.3, entry.easeFactor - 0.15);
+    } else if (quality === 4) {
+      // Good - standard SM-2 intervals
+      entry.reviewCount++;
       if (entry.reviewCount === 1) {
-        entry.interval = 1;
+        entry.interval = 1; // 1 day
       } else if (entry.reviewCount === 2) {
-        entry.interval = 6;
+        entry.interval = 6; // 6 days
       } else {
         entry.interval = Math.round(entry.interval * entry.easeFactor);
       }
-
-      // Update ease factor
+      // Standard ease factor adjustment
       entry.easeFactor = Math.max(
         1.3,
         entry.easeFactor + (0.1 - (5 - quality) * (0.08 + (5 - quality) * 0.02))
       );
-    } else {
-      // Incorrect response - reset interval
-      entry.interval = 1;
-      entry.reviewCount = 1;
+    } else if (quality === 5) {
+      // Easy - longer intervals
+      entry.reviewCount++;
+      if (entry.reviewCount === 1) {
+        entry.interval = 4; // 4 days (skip ahead)
+      } else if (entry.reviewCount === 2) {
+        entry.interval = 10; // 10 days
+      } else {
+        entry.interval = Math.round(entry.interval * entry.easeFactor * 1.3);
+      }
+      // Increase ease factor for easy cards
+      entry.easeFactor = Math.min(2.5, entry.easeFactor + 0.15);
     }
 
-    // Set next review date
+    // Set next review date (convert days to milliseconds)
     entry.nextReview = now + entry.interval * 24 * 60 * 60 * 1000;
 
     cache.set(word, entry);
