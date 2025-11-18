@@ -467,6 +467,21 @@
   margin-bottom: 4px;
 }
 
+.comment-photo {
+  margin: 6px 0;
+  border-radius: 8px;
+  overflow: hidden;
+  max-width: 100%;
+}
+
+.comment-photo img {
+  width: 100%;
+  height: auto;
+  display: block;
+  max-height: 250px;
+  object-fit: cover;
+}
+
 .comment-text {
   font-size: 13px;
   color: var(--tg-text-primary);

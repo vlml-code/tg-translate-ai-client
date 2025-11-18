@@ -262,6 +262,27 @@ export class TelegramService {
               }
             }
 
+            // Download photo if available (same as main messages)
+            let photoUrl: string | undefined;
+            if (msg.media && msg.media instanceof Api.MessageMediaPhoto) {
+              try {
+                const buffer = await this.client.downloadMedia(msg.media, {
+                  thumb: 2, // Medium size thumbnail for performance
+                });
+                if (buffer) {
+                  // Convert buffer to data URL
+                  const blob = new Blob([buffer], { type: 'image/jpeg' });
+                  photoUrl = await new Promise<string>((resolve) => {
+                    const reader = new FileReader();
+                    reader.onloadend = () => resolve(reader.result as string);
+                    reader.readAsDataURL(blob);
+                  });
+                }
+              } catch (error) {
+                console.error('Failed to download comment photo:', error);
+              }
+            }
+
             comments.push({
               id: msg.id,
               text: msg.message || '',
@@ -270,6 +291,7 @@ export class TelegramService {
               senderName,
               isOutgoing: msg.out || false,
               media: msg.media,
+              photoUrl,
             });
           }
         }

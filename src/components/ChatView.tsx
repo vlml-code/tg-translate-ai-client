@@ -607,7 +607,20 @@ export const ChatView: React.FC<ChatViewProps> = ({
                         expandedComments[message.id]?.comments.map(comment => (
                           <div key={comment.id} className="comment-item">
                             <div className="comment-sender">{comment.senderName}</div>
-                            <div className="comment-text">{comment.text}</div>
+                            {comment.photoUrl && (
+                              <div className="comment-photo">
+                                <img src={comment.photoUrl} alt="Comment photo" />
+                              </div>
+                            )}
+                            <div className="comment-text">
+                              {comment.text ? (
+                                <MessageTextWithPinyin
+                                  text={comment.text}
+                                  messageKey={`comment-${comment.id}`}
+                                  refreshTrigger={dictionaryRefresh}
+                                />
+                              ) : (comment.photoUrl ? '' : '[Media]')}
+                            </div>
                             <div className="comment-time">{formatTime(comment.date)}</div>
                           </div>
                         ))
