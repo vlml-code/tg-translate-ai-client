@@ -221,16 +221,42 @@ export class TelegramService {
 
   /**
    * Get comments/replies for a specific message
+   * Comments work through linked discussion groups where the message IDs differ
    */
   async getComments(channelId: string, messageId: number, limit: number = 20): Promise<MessageInfo[]> {
     if (!this.client) throw new Error('Client not initialized');
 
     try {
-      // Get the discussion/reply messages
-      const result = await this.client.invoke(
-        new Api.messages.GetReplies({
+      // First, get the discussion message which maps the channel post to the discussion group
+      const discussionResult = await this.client.invoke(
+        new Api.messages.GetDiscussionMessage({
           peer: channelId,
           msgId: messageId,
+        })
+      );
+
+      // Extract the discussion group message
+      if (!discussionResult.messages || discussionResult.messages.length === 0) {
+        return [];
+      }
+
+      // The first message is the root discussion message
+      const rootMessage = discussionResult.messages[0];
+      if (!(rootMessage instanceof Api.Message)) {
+        return [];
+      }
+
+      // Get the peer info for the discussion group
+      const discussionPeer = rootMessage.peerId;
+      if (!discussionPeer) {
+        return [];
+      }
+
+      // Now fetch the replies from the discussion group
+      const repliesResult = await this.client.invoke(
+        new Api.messages.GetReplies({
+          peer: discussionPeer,
+          msgId: rootMessage.id,
           offsetId: 0,
           offsetDate: 0,
           addOffset: 0,
@@ -243,8 +269,8 @@ export class TelegramService {
 
       const comments: MessageInfo[] = [];
 
-      if ('messages' in result) {
-        for (const msg of result.messages) {
+      if ('messages' in repliesResult) {
+        for (const msg of repliesResult.messages) {
           if (msg instanceof Api.Message) {
             let senderName = 'Unknown';
 
