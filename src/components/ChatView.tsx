@@ -191,7 +191,11 @@ export const ChatView: React.FC<ChatViewProps> = ({
       if (newMessages.length === 0) {
         setHasMore(false);
       } else {
-        setMessages((prev) => reset ? newMessages : [...newMessages, ...prev]);
+        // Merge and sort messages chronologically (oldest to newest)
+        setMessages((prev) => {
+          const merged = reset ? newMessages : [...newMessages, ...prev];
+          return merged.sort((a, b) => a.date.getTime() - b.date.getTime());
+        });
       }
 
       setError('');
@@ -230,7 +234,23 @@ export const ChatView: React.FC<ChatViewProps> = ({
   };
 
   const formatTime = (date: Date) => {
-    return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+    const today = new Date();
+    const messageDate = new Date(date);
+
+    // If today, show only time
+    if (messageDate.toDateString() === today.toDateString()) {
+      return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+    }
+
+    // If this year, show month/day and time
+    if (messageDate.getFullYear() === today.getFullYear()) {
+      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ', ' +
+             date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+    }
+
+    // Otherwise show full date and time
+    return date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) + ', ' +
+           date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
   };
 
   const formatDate = (date: Date) => {

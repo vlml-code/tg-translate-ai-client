@@ -294,9 +294,12 @@
 }
 
 .message-time {
-  font-size: 11px;
-  opacity: 0.7;
+  font-size: 12px;
+  opacity: 0.85;
   text-align: right;
+  margin-top: 6px;
+  color: var(--tg-text-secondary);
+  font-weight: 500;
 }
 
 .message-actions {
