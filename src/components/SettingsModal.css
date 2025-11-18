@@ -14,10 +14,14 @@
   border-radius: 18px;
   width: 440px;
   max-width: 92vw;
+  max-height: 90vh;
   box-shadow: 0 25px 60px rgba(0, 0, 0, 0.45);
   padding: 28px;
   border: 1px solid var(--tg-border);
   color: var(--tg-text-primary);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .settings-modal-header {
@@ -25,6 +29,7 @@
   justify-content: space-between;
   align-items: center;
   margin-bottom: 16px;
+  flex-shrink: 0;
 }
 
 .settings-modal-header h2 {
@@ -48,6 +53,28 @@
   display: flex;
   flex-direction: column;
   gap: 16px;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+  padding-right: 4px;
+}
+
+.settings-form::-webkit-scrollbar {
+  width: 6px;
+}
+
+.settings-form::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 3px;
+}
+
+.settings-form::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 3px;
+}
+
+.settings-form::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
 }
 
 .form-field {
@@ -86,7 +113,10 @@
   display: flex;
   justify-content: flex-end;
   gap: 12px;
-  margin-top: 8px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  flex-shrink: 0;
 }
 
 .settings-actions button {

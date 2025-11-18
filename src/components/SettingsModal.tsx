@@ -41,7 +41,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           </button>
         </div>
 
-        <form className="settings-form" onSubmit={handleSubmit}>
+        <div className="settings-form">
           <label className="form-field">
             <span>Grok API key</span>
             <input
@@ -58,7 +58,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <textarea
               value={settings.prompt}
               onChange={(e) => setSettings({ ...settings, prompt: e.target.value })}
-              rows={4}
+              rows={3}
             />
             <small>This prompt is sent as the system instruction before your message.</small>
           </label>
@@ -68,7 +68,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <textarea
               value={settings.simplifyPrompt}
               onChange={(e) => setSettings({ ...settings, simplifyPrompt: e.target.value })}
-              rows={4}
+              rows={3}
             />
             <small>
               Used when you tap <strong>Simplify</strong>. Keep it focused on rewriting Chinese text with only HSK1/HSK2
@@ -93,22 +93,22 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <textarea
               value={settings.digestPrompt}
               onChange={(e) => setSettings({ ...settings, digestPrompt: e.target.value })}
-              rows={4}
+              rows={3}
             />
             <small>
               This prompt guides how DeepSeek creates digests from your monitored channel messages.
             </small>
           </label>
+        </div>
 
-          <div className="settings-actions">
-            <button type="button" className="secondary" onClick={onClose}>
-              Cancel
-            </button>
-            <button type="submit" className="primary">
-              Save
-            </button>
-          </div>
-        </form>
+        <div className="settings-actions">
+          <button type="button" className="secondary" onClick={onClose}>
+            Cancel
+          </button>
+          <button type="submit" className="primary" onClick={handleSubmit}>
+            Save
+          </button>
+        </div>
       </div>
     </div>
   );
