@@ -3,10 +3,13 @@ import { AuthForm } from './components/AuthForm';
 import { ChatList } from './components/ChatList';
 import { ChatView } from './components/ChatView';
 import { SettingsModal } from './components/SettingsModal';
+import { CompactChatsPage } from './components/CompactChatsPage';
 import { telegramService } from './services/telegramClient';
 import { settingsService } from './services/settingsService';
 import { TranslationSettings } from './types';
 import './App.css';
+
+type AppView = 'chats' | 'archive';
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -14,6 +17,7 @@ function App() {
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
   const [selectedChatTitle, setSelectedChatTitle] = useState<string>('');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [currentView, setCurrentView] = useState<AppView>('chats');
   const [settings, setSettings] = useState<TranslationSettings>(
     settingsService.getSettings()
   );
@@ -78,6 +82,12 @@ function App() {
     );
   }
 
+  if (currentView === 'archive') {
+    return (
+      <CompactChatsPage onBack={() => setCurrentView('chats')} />
+    );
+  }
+
   return (
     <>
       <div className="app">
@@ -85,6 +95,7 @@ function App() {
           onChatSelect={handleChatSelect}
           selectedChatId={selectedChatId}
           onOpenSettings={() => setIsSettingsOpen(true)}
+          onOpenArchive={() => setCurrentView('archive')}
         />
         {selectedChatId ? (
           <ChatView

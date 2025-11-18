@@ -1,0 +1,549 @@
+import { useEffect, useState } from 'react';
+import { ChatInfo } from '../types';
+import { telegramService } from '../services/telegramClient';
+import { databaseService, SavedChannel, ArchivedMessage } from '../services/databaseService';
+import './CompactChatsPage.css';
+
+interface CompactChatsPageProps {
+  onBack: () => void;
+}
+
+type ViewMode = 'manage' | 'monitor' | 'view';
+
+export function CompactChatsPage({ onBack }: CompactChatsPageProps) {
+  const [chats, setChats] = useState<ChatInfo[]>([]);
+  const [savedChannels, setSavedChannels] = useState<Map<string, SavedChannel>>(new Map());
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string>('');
+  const [viewMode, setViewMode] = useState<ViewMode>('manage');
+
+  // Monitor mode state
+  const [monitorDate, setMonitorDate] = useState<string>(
+    new Date().toISOString().split('T')[0]
+  );
+  const [monitoring, setMonitoring] = useState(false);
+  const [monitorProgress, setMonitorProgress] = useState<string>('');
+
+  // View mode state
+  const [viewDate, setViewDate] = useState<string>(
+    new Date().toISOString().split('T')[0]
+  );
+  const [archivedMessages, setArchivedMessages] = useState<ArchivedMessage[]>([]);
+  const [archivedDates, setArchivedDates] = useState<Date[]>([]);
+  const [loadingMessages, setLoadingMessages] = useState(false);
+
+  // Tag editing state
+  const [editingTagForChannel, setEditingTagForChannel] = useState<string | null>(null);
+  const [tempTag, setTempTag] = useState<string>('');
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const loadData = async () => {
+    try {
+      setLoading(true);
+      setError('');
+
+      // Initialize database
+      await databaseService.initialize();
+
+      // Load chats from Telegram
+      const chatList = await telegramService.getChats();
+      setChats(chatList);
+
+      // Load saved channels from database
+      const saved = await databaseService.getAllChannels();
+      const savedMap = new Map<string, SavedChannel>();
+      saved.forEach((channel) => {
+        savedMap.set(channel.id, channel);
+      });
+      setSavedChannels(savedMap);
+
+      // Load archived dates
+      const dates = await databaseService.getArchivedDates();
+      setArchivedDates(dates);
+    } catch (err) {
+      console.error('Failed to load data:', err);
+      setError('Failed to load chats and saved channels');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCheckboxChange = async (chat: ChatInfo, checked: boolean) => {
+    try {
+      const existingChannel = savedChannels.get(chat.id);
+      const savedChannel: SavedChannel = {
+        id: chat.id,
+        title: chat.title,
+        isChecked: checked,
+        tag: existingChannel?.tag,
+        lastArchived: existingChannel?.lastArchived,
+      };
+
+      await databaseService.saveChannel(savedChannel);
+
+      // Update local state
+      const newSavedChannels = new Map(savedChannels);
+      newSavedChannels.set(chat.id, savedChannel);
+      setSavedChannels(newSavedChannels);
+    } catch (err) {
+      console.error('Failed to save channel:', err);
+      setError(`Failed to save channel: ${chat.title}`);
+    }
+  };
+
+  const handleTagEdit = (channelId: string, currentTag?: string) => {
+    setEditingTagForChannel(channelId);
+    setTempTag(currentTag || '');
+  };
+
+  const handleTagSave = async (channelId: string) => {
+    try {
+      const existingChannel = savedChannels.get(channelId);
+      if (!existingChannel) return;
+
+      const updatedChannel: SavedChannel = {
+        ...existingChannel,
+        tag: tempTag.trim() || undefined,
+      };
+
+      await databaseService.saveChannel(updatedChannel);
+
+      // Update local state
+      const newSavedChannels = new Map(savedChannels);
+      newSavedChannels.set(channelId, updatedChannel);
+      setSavedChannels(newSavedChannels);
+
+      setEditingTagForChannel(null);
+      setTempTag('');
+    } catch (err) {
+      console.error('Failed to save tag:', err);
+      setError('Failed to save tag');
+    }
+  };
+
+  const handleTagCancel = () => {
+    setEditingTagForChannel(null);
+    setTempTag('');
+  };
+
+  const handleMonitorMessages = async () => {
+    try {
+      setMonitoring(true);
+      setError('');
+      setMonitorProgress('');
+
+      const checkedChannels = Array.from(savedChannels.values()).filter(
+        (ch) => ch.isChecked
+      );
+
+      if (checkedChannels.length === 0) {
+        setError('No channels selected. Please check at least one channel.');
+        setMonitoring(false);
+        return;
+      }
+
+      const targetDate = new Date(monitorDate);
+      const startOfDay = new Date(targetDate);
+      startOfDay.setHours(0, 0, 0, 0);
+      const endOfDay = new Date(targetDate);
+      endOfDay.setHours(23, 59, 59, 999);
+
+      let totalMessages = 0;
+
+      for (let i = 0; i < checkedChannels.length; i++) {
+        const channel = checkedChannels[i];
+        setMonitorProgress(
+          `Processing ${channel.title} (${i + 1}/${checkedChannels.length})...`
+        );
+
+        try {
+          // Fetch messages from this channel
+          const messages = await telegramService.getMessages(channel.id, 100);
+
+          // Filter messages by date
+          const messagesOnDate = messages.filter((msg: any) => {
+            const msgDate = new Date(msg.date);
+            return msgDate >= startOfDay && msgDate <= endOfDay;
+          });
+
+          if (messagesOnDate.length > 0) {
+            // Convert to archived messages
+            const archivedMessages: ArchivedMessage[] = messagesOnDate.map((msg: any) => ({
+              chatId: channel.id,
+              messageId: msg.id,
+              text: msg.text,
+              date: msg.date,
+              archivedDate: new Date(),
+              senderId: msg.senderId,
+              senderName: msg.senderName,
+              isOutgoing: msg.isOutgoing,
+            }));
+
+            // Save to database
+            await databaseService.saveMessages(archivedMessages);
+            totalMessages += archivedMessages.length;
+
+            // Update last monitored date
+            await databaseService.updateChannelLastArchived(channel.id, new Date());
+          }
+        } catch (err) {
+          console.error(`Failed to monitor messages from ${channel.title}:`, err);
+          // Continue with other channels
+        }
+      }
+
+      setMonitorProgress(
+        `✓ Completed! Saved ${totalMessages} messages from ${checkedChannels.length} channels.`
+      );
+
+      // Reload data to update UI
+      await loadData();
+
+      // Auto-switch to view mode after a delay
+      setTimeout(() => {
+        setViewMode('view');
+        setViewDate(monitorDate);
+      }, 2000);
+    } catch (err) {
+      console.error('Failed to monitor messages:', err);
+      setError('Failed to monitor messages. Please try again.');
+    } finally {
+      setMonitoring(false);
+    }
+  };
+
+  const handleViewMessages = async () => {
+    try {
+      setLoadingMessages(true);
+      setError('');
+
+      const date = new Date(viewDate);
+      const messages = await databaseService.getMessagesByDate(date);
+
+      // Sort by date (newest first)
+      messages.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+      setArchivedMessages(messages);
+    } catch (err) {
+      console.error('Failed to load archived messages:', err);
+      setError('Failed to load archived messages');
+    } finally {
+      setLoadingMessages(false);
+    }
+  };
+
+  useEffect(() => {
+    if (viewMode === 'view') {
+      handleViewMessages();
+    }
+  }, [viewMode, viewDate]);
+
+  const renderManageView = () => (
+    <div className="compact-chats-content">
+      <div className="compact-chats-header">
+        <h2>Manage Channels</h2>
+        <p className="subtitle">Select channels to monitor for digest</p>
+      </div>
+
+      {error && <div className="error-message">{error}</div>}
+
+      {loading ? (
+        <div className="loading-state">Loading channels...</div>
+      ) : (
+        <div className="compact-chat-list">
+          {chats.map((chat) => {
+            const saved = savedChannels.get(chat.id);
+            const isChecked = saved?.isChecked || false;
+            const lastArchived = saved?.lastArchived;
+            const tag = saved?.tag;
+            const isEditingTag = editingTagForChannel === chat.id;
+
+            return (
+              <div key={chat.id} className="compact-chat-item">
+                <input
+                  type="checkbox"
+                  id={`chat-${chat.id}`}
+                  checked={isChecked}
+                  onChange={(e) => handleCheckboxChange(chat, e.target.checked)}
+                  className="chat-checkbox"
+                />
+                <label htmlFor={`chat-${chat.id}`} className="chat-label">
+                  <div className="chat-info">
+                    <span className="chat-title">{chat.title}</span>
+                    <div className="chat-metadata">
+                      {lastArchived && (
+                        <span className="last-archived">
+                          Last monitored: {new Date(lastArchived).toLocaleString()}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="chat-meta">
+                    {chat.isChannel && <span className="badge">Channel</span>}
+                    {chat.isGroup && <span className="badge">Group</span>}
+                  </div>
+                </label>
+                <div className="tag-section" onClick={(e) => e.stopPropagation()}>
+                  {isEditingTag ? (
+                    <div className="tag-edit">
+                      <input
+                        type="text"
+                        value={tempTag}
+                        onChange={(e) => setTempTag(e.target.value)}
+                        placeholder="Tag name"
+                        className="tag-input"
+                        autoFocus
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            handleTagSave(chat.id);
+                          } else if (e.key === 'Escape') {
+                            handleTagCancel();
+                          }
+                        }}
+                      />
+                      <button
+                        onClick={() => handleTagSave(chat.id)}
+                        className="tag-save-btn"
+                        title="Save"
+                      >
+                        ✓
+                      </button>
+                      <button
+                        onClick={handleTagCancel}
+                        className="tag-cancel-btn"
+                        title="Cancel"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="tag-display">
+                      {tag ? (
+                        <span className="tag-badge" onClick={() => handleTagEdit(chat.id, tag)}>
+                          {tag}
+                        </span>
+                      ) : (
+                        <button
+                          className="tag-add-btn"
+                          onClick={() => handleTagEdit(chat.id)}
+                          title="Add tag"
+                        >
+                          + Tag
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      <div className="action-buttons">
+        <button onClick={() => setViewMode('monitor')} className="btn btn-primary">
+          Monitor Messages →
+        </button>
+      </div>
+    </div>
+  );
+
+  const renderMonitorView = () => (
+    <div className="compact-chats-content">
+      <div className="compact-chats-header">
+        <h2>Monitor Messages</h2>
+        <p className="subtitle">Fetch and save messages from selected channels for digest</p>
+      </div>
+
+      {error && <div className="error-message">{error}</div>}
+
+      <div className="archive-controls">
+        <div className="form-group">
+          <label htmlFor="monitor-date">Select Date to Monitor:</label>
+          <input
+            type="date"
+            id="monitor-date"
+            value={monitorDate}
+            onChange={(e) => setMonitorDate(e.target.value)}
+            disabled={monitoring}
+            className="date-input"
+          />
+        </div>
+
+        <div className="selected-channels">
+          <h3>Monitored Channels:</h3>
+          <ul>
+            {Array.from(savedChannels.values())
+              .filter((ch) => ch.isChecked)
+              .map((ch) => (
+                <li key={ch.id}>
+                  {ch.title}
+                  {ch.tag && <span className="channel-tag-inline"> [{ch.tag}]</span>}
+                </li>
+              ))}
+          </ul>
+          {Array.from(savedChannels.values()).filter((ch) => ch.isChecked).length === 0 && (
+            <p className="no-channels">No channels selected</p>
+          )}
+        </div>
+
+        {monitorProgress && (
+          <div className="archive-progress">{monitorProgress}</div>
+        )}
+
+        <div className="action-buttons">
+          <button
+            onClick={() => setViewMode('manage')}
+            className="btn btn-secondary"
+            disabled={monitoring}
+          >
+            ← Back to Manage
+          </button>
+          <button
+            onClick={handleMonitorMessages}
+            className="btn btn-primary"
+            disabled={monitoring}
+          >
+            {monitoring ? 'Monitoring...' : 'Start Monitoring'}
+          </button>
+          <button
+            onClick={() => setViewMode('view')}
+            className="btn btn-secondary"
+            disabled={monitoring}
+          >
+            View Saved →
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderViewMode = () => (
+    <div className="compact-chats-content">
+      <div className="compact-chats-header">
+        <h2>View Digest Messages</h2>
+        <p className="subtitle">Browse messages saved from monitored channels</p>
+      </div>
+
+      {error && <div className="error-message">{error}</div>}
+
+      <div className="view-controls">
+        <div className="form-group">
+          <label htmlFor="view-date">Select Date:</label>
+          <input
+            type="date"
+            id="view-date"
+            value={viewDate}
+            onChange={(e) => setViewDate(e.target.value)}
+            className="date-input"
+          />
+        </div>
+
+        {archivedDates.length > 0 && (
+          <div className="available-dates">
+            <h3>Available Dates:</h3>
+            <div className="date-pills">
+              {archivedDates.map((date) => (
+                <button
+                  key={date.toISOString()}
+                  onClick={() => setViewDate(date.toISOString().split('T')[0])}
+                  className={`date-pill ${
+                    date.toISOString().split('T')[0] === viewDate ? 'active' : ''
+                  }`}
+                >
+                  {date.toLocaleDateString()}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {loadingMessages ? (
+          <div className="loading-state">Loading messages...</div>
+        ) : (
+          <div className="archived-messages-list">
+            <h3>
+              Messages for {new Date(viewDate).toLocaleDateString()} ({archivedMessages.length})
+            </h3>
+            {archivedMessages.length === 0 ? (
+              <p className="no-messages">No messages found for this date</p>
+            ) : (
+              <div className="messages">
+                {archivedMessages.map((msg, index) => {
+                  const chat = chats.find((c) => c.id === msg.chatId);
+                  const savedChannel = savedChannels.get(msg.chatId);
+                  return (
+                    <div key={index} className="archived-message">
+                      <div className="message-header">
+                        <span className="channel-name">
+                          {chat?.title || msg.chatId}
+                          {savedChannel?.tag && (
+                            <span className="message-tag"> [{savedChannel.tag}]</span>
+                          )}
+                        </span>
+                        <span className="message-time">
+                          {new Date(msg.date).toLocaleTimeString()}
+                        </span>
+                      </div>
+                      <div className="message-sender">
+                        {msg.isOutgoing ? 'You' : msg.senderName}
+                      </div>
+                      <div className="message-text">{msg.text}</div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        <div className="action-buttons">
+          <button onClick={() => setViewMode('manage')} className="btn btn-secondary">
+            ← Back to Manage
+          </button>
+          <button onClick={() => setViewMode('monitor')} className="btn btn-secondary">
+            Monitor More →
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="compact-chats-page">
+      <div className="page-header">
+        <button onClick={onBack} className="back-button">
+          ← Back to Chats
+        </button>
+        <h1>Digest Monitoring</h1>
+        <div className="view-mode-tabs">
+          <button
+            onClick={() => setViewMode('manage')}
+            className={`tab ${viewMode === 'manage' ? 'active' : ''}`}
+          >
+            Manage
+          </button>
+          <button
+            onClick={() => setViewMode('monitor')}
+            className={`tab ${viewMode === 'monitor' ? 'active' : ''}`}
+          >
+            Monitor
+          </button>
+          <button
+            onClick={() => setViewMode('view')}
+            className={`tab ${viewMode === 'view' ? 'active' : ''}`}
+          >
+            View
+          </button>
+        </div>
+      </div>
+
+      {viewMode === 'manage' && renderManageView()}
+      {viewMode === 'monitor' && renderMonitorView()}
+      {viewMode === 'view' && renderViewMode()}
+    </div>
+  );
+}
