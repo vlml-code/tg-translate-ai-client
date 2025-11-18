@@ -1,14 +1,17 @@
 import { useEffect, useState } from 'react';
 import { ChatInfo } from '../types';
 import { telegramService } from '../services/telegramClient';
-import { databaseService, SavedChannel, ArchivedMessage } from '../services/databaseService';
+import { databaseService, SavedChannel, ArchivedMessage, GeneratedDigest } from '../services/databaseService';
+import { deepseekService, MessageForDigest } from '../services/deepseekService';
+import { settingsService } from '../services/settingsService';
+import { prepareDigestForTelegram } from '../services/telegramFormatter';
 import './CompactChatsPage.css';
 
 interface CompactChatsPageProps {
   onBack: () => void;
 }
 
-type ViewMode = 'manage' | 'monitor' | 'view';
+type ViewMode = 'manage' | 'monitor' | 'view' | 'digests';
 
 export function CompactChatsPage({ onBack }: CompactChatsPageProps) {
   const [chats, setChats] = useState<ChatInfo[]>([]);
@@ -32,6 +35,14 @@ export function CompactChatsPage({ onBack }: CompactChatsPageProps) {
   const [archivedDates, setArchivedDates] = useState<Date[]>([]);
   const [loadingMessages, setLoadingMessages] = useState(false);
 
+  // Digests mode state
+  const [digestDate, setDigestDate] = useState<string>(
+    new Date().toISOString().split('T')[0]
+  );
+  const [generatedDigests, setGeneratedDigests] = useState<GeneratedDigest[]>([]);
+  const [digestDates, setDigestDates] = useState<Date[]>([]);
+  const [loadingDigests, setLoadingDigests] = useState(false);
+
   // Tag editing state
   const [editingTagForChannel, setEditingTagForChannel] = useState<string | null>(null);
   const [tempTag, setTempTag] = useState<string>('');
@@ -45,27 +56,58 @@ export function CompactChatsPage({ onBack }: CompactChatsPageProps) {
       setLoading(true);
       setError('');
 
-      // Initialize database
-      await databaseService.initialize();
+      console.log('Starting to load data...');
+
+      // Initialize database with timeout
+      console.log('Initializing database...');
+      try {
+        await Promise.race([
+          databaseService.initialize(),
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('Database initialization timeout')), 10000)
+          )
+        ]);
+        console.log('Database initialized successfully');
+      } catch (dbErr) {
+        console.error('Database initialization failed:', dbErr);
+        throw new Error(
+          'Failed to initialize database. If the issue persists, please close all other tabs and refresh.'
+        );
+      }
 
       // Load chats from Telegram
+      console.log('Loading chats from Telegram...');
       const chatList = await telegramService.getChats();
+      console.log(`Loaded ${chatList.length} chats`);
       setChats(chatList);
 
       // Load saved channels from database
+      console.log('Loading saved channels...');
       const saved = await databaseService.getAllChannels();
       const savedMap = new Map<string, SavedChannel>();
       saved.forEach((channel) => {
         savedMap.set(channel.id, channel);
       });
       setSavedChannels(savedMap);
+      console.log(`Loaded ${saved.length} saved channels`);
 
       // Load archived dates
+      console.log('Loading archived dates...');
       const dates = await databaseService.getArchivedDates();
       setArchivedDates(dates);
+      console.log(`Loaded ${dates.length} archived dates`);
+
+      // Load digest dates
+      console.log('Loading digest dates...');
+      const digestDatesData = await databaseService.getDigestDates();
+      setDigestDates(digestDatesData);
+      console.log(`Loaded ${digestDatesData.length} digest dates`);
+
+      console.log('Data loading completed successfully');
     } catch (err) {
       console.error('Failed to load data:', err);
-      setError('Failed to load chats and saved channels');
+      const errorMessage = err instanceof Error ? err.message : 'Failed to load chats and saved channels';
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -152,11 +194,13 @@ export function CompactChatsPage({ onBack }: CompactChatsPageProps) {
       endOfDay.setHours(23, 59, 59, 999);
 
       let totalMessages = 0;
+      let duplicatesSkipped = 0;
 
+      // Step 1: Fetch and save messages
       for (let i = 0; i < checkedChannels.length; i++) {
         const channel = checkedChannels[i];
         setMonitorProgress(
-          `Processing ${channel.title} (${i + 1}/${checkedChannels.length})...`
+          `Fetching messages from ${channel.title} (${i + 1}/${checkedChannels.length})...`
         );
 
         try {
@@ -170,21 +214,31 @@ export function CompactChatsPage({ onBack }: CompactChatsPageProps) {
           });
 
           if (messagesOnDate.length > 0) {
-            // Convert to archived messages
-            const archivedMessages: ArchivedMessage[] = messagesOnDate.map((msg: any) => ({
-              chatId: channel.id,
-              messageId: msg.id,
-              text: msg.text,
-              date: msg.date,
-              archivedDate: new Date(),
-              senderId: msg.senderId,
-              senderName: msg.senderName,
-              isOutgoing: msg.isOutgoing,
-            }));
+            // Check for duplicates and filter them out
+            const newMessages: ArchivedMessage[] = [];
+            for (const msg of messagesOnDate) {
+              const exists = await databaseService.messageExists(channel.id, msg.id);
+              if (!exists) {
+                newMessages.push({
+                  chatId: channel.id,
+                  messageId: msg.id,
+                  text: msg.text,
+                  date: msg.date,
+                  archivedDate: new Date(),
+                  senderId: msg.senderId,
+                  senderName: msg.senderName,
+                  isOutgoing: msg.isOutgoing,
+                });
+              } else {
+                duplicatesSkipped++;
+              }
+            }
 
-            // Save to database
-            await databaseService.saveMessages(archivedMessages);
-            totalMessages += archivedMessages.length;
+            // Save only new messages to database
+            if (newMessages.length > 0) {
+              await databaseService.saveMessages(newMessages);
+              totalMessages += newMessages.length;
+            }
 
             // Update last monitored date
             await databaseService.updateChannelLastArchived(channel.id, new Date());
@@ -195,17 +249,139 @@ export function CompactChatsPage({ onBack }: CompactChatsPageProps) {
         }
       }
 
-      setMonitorProgress(
-        `✓ Completed! Saved ${totalMessages} messages from ${checkedChannels.length} channels.`
-      );
+      // Step 2: Generate digests per tag
+      setMonitorProgress('Generating digests...');
+
+      const settings = settingsService.getSettings();
+      if (settings.deepseekApiKey) {
+        try {
+          // Get all messages for the target date
+          const allMessages = await databaseService.getMessagesByDate(targetDate);
+
+          // Group messages by tag
+          const messagesByTag = new Map<string, ArchivedMessage[]>();
+
+          for (const msg of allMessages) {
+            const channel = savedChannels.get(msg.chatId);
+            const tag = channel?.tag || 'untagged';
+
+            if (!messagesByTag.has(tag)) {
+              messagesByTag.set(tag, []);
+            }
+            messagesByTag.get(tag)!.push(msg);
+          }
+
+          // Generate digest for each tag
+          let digestCount = 0;
+          for (const [tag, messages] of messagesByTag.entries()) {
+            if (messages.length === 0) continue;
+
+            setMonitorProgress(`Generating digest for tag "${tag}" (${messages.length} messages)...`);
+
+            try {
+              // Prepare messages for DeepSeek
+              const messagesForDigest: MessageForDigest[] = messages.map(msg => {
+                const channel = savedChannels.get(msg.chatId);
+                return {
+                  text: msg.text,
+                  date: new Date(msg.date),
+                  senderName: msg.senderName,
+                  channelTitle: channel?.title || msg.chatId
+                };
+              });
+
+              // Generate digest using DeepSeek
+              const digestText = await deepseekService.generateDigest(
+                settings.deepseekApiKey,
+                messagesForDigest,
+                settings.digestPrompt,
+                tag !== 'untagged' ? tag : undefined
+              );
+
+              // Save digest to database
+              await databaseService.saveDigest({
+                tag,
+                date: targetDate,
+                digest: digestText,
+                generatedAt: new Date(),
+                messageCount: messages.length
+              });
+
+              digestCount++;
+            } catch (digestErr) {
+              console.error(`Failed to generate digest for tag "${tag}":`, digestErr);
+              // Continue with other tags
+            }
+          }
+
+          setMonitorProgress(
+            `✓ Generated ${digestCount} digests. Saved ${totalMessages} new messages (${duplicatesSkipped} duplicates skipped).`
+          );
+
+          // Step 3: Auto-send digests to configured channel if available
+          if (settings.digestTargetChannelId && digestCount > 0) {
+            try {
+              setMonitorProgress('Sending digests to channel...');
+
+              // Get the generated digests for this date
+              const digestsToSend = await databaseService.getDigestsByDate(targetDate);
+
+              for (let i = 0; i < digestsToSend.length; i++) {
+                const digest = digestsToSend[i];
+                setMonitorProgress(`Sending digest ${i + 1}/${digestsToSend.length} (${digest.tag})...`);
+
+                try {
+                  // Prepare digest for telegram (convert markdown, split if needed)
+                  const messages = prepareDigestForTelegram(digest.digest, digest.tag);
+                  console.log(`Sending ${messages.length} message(s) for tag "${digest.tag}"`);
+
+                  // Send all messages for this digest
+                  await telegramService.sendMessages(settings.digestTargetChannelId, messages);
+                  console.log(`Successfully sent digest for tag "${digest.tag}"`);
+                } catch (sendErr) {
+                  console.error(`Failed to send digest for tag "${digest.tag}":`, sendErr);
+                  throw sendErr; // Stop on first error
+                }
+              }
+
+              setMonitorProgress(
+                `✓ Completed! Saved ${totalMessages} messages, generated ${digestCount} digests, and sent them to channel.`
+              );
+            } catch (sendErr) {
+              console.error('Failed to send digests to channel:', sendErr);
+              setMonitorProgress(
+                `✓ Generated ${digestCount} digests but failed to send to channel. Check settings.`
+              );
+            }
+          } else {
+            setMonitorProgress(
+              `✓ Completed! Saved ${totalMessages} new messages, generated ${digestCount} digests.`
+            );
+          }
+        } catch (digestErr) {
+          console.error('Failed to generate digests:', digestErr);
+          setMonitorProgress(
+            `✓ Saved ${totalMessages} new messages (${duplicatesSkipped} duplicates skipped). Failed to generate digests.`
+          );
+        }
+      } else {
+        setMonitorProgress(
+          `✓ Completed! Saved ${totalMessages} new messages (${duplicatesSkipped} duplicates skipped). No DeepSeek API key configured.`
+        );
+      }
 
       // Reload data to update UI
       await loadData();
 
-      // Auto-switch to view mode after a delay
+      // Auto-switch to digests mode after a delay if digests were generated
       setTimeout(() => {
-        setViewMode('view');
-        setViewDate(monitorDate);
+        if (settings.deepseekApiKey) {
+          setViewMode('digests');
+          setDigestDate(monitorDate);
+        } else {
+          setViewMode('view');
+          setViewDate(monitorDate);
+        }
       }, 2000);
     } catch (err) {
       console.error('Failed to monitor messages:', err);
@@ -235,11 +411,37 @@ export function CompactChatsPage({ onBack }: CompactChatsPageProps) {
     }
   };
 
+  const handleViewDigests = async () => {
+    try {
+      setLoadingDigests(true);
+      setError('');
+
+      const date = new Date(digestDate);
+      const digests = await databaseService.getDigestsByDate(date);
+
+      // Sort by tag
+      digests.sort((a, b) => a.tag.localeCompare(b.tag));
+
+      setGeneratedDigests(digests);
+    } catch (err) {
+      console.error('Failed to load digests:', err);
+      setError('Failed to load digests');
+    } finally {
+      setLoadingDigests(false);
+    }
+  };
+
   useEffect(() => {
     if (viewMode === 'view') {
       handleViewMessages();
     }
   }, [viewMode, viewDate]);
+
+  useEffect(() => {
+    if (viewMode === 'digests') {
+      handleViewDigests();
+    }
+  }, [viewMode, digestDate]);
 
   const renderManageView = () => (
     <div className="compact-chats-content">
@@ -248,7 +450,18 @@ export function CompactChatsPage({ onBack }: CompactChatsPageProps) {
         <p className="subtitle">Select channels to monitor for digest</p>
       </div>
 
-      {error && <div className="error-message">{error}</div>}
+      {error && (
+        <div className="error-message">
+          {error}
+          <button
+            onClick={() => loadData()}
+            className="retry-btn"
+            style={{ marginLeft: '10px', padding: '4px 12px', cursor: 'pointer' }}
+          >
+            Retry
+          </button>
+        </div>
+      )}
 
       {loading ? (
         <div className="loading-state">Loading channels...</div>
@@ -512,6 +725,86 @@ export function CompactChatsPage({ onBack }: CompactChatsPageProps) {
     </div>
   );
 
+  const renderDigestsView = () => (
+    <div className="compact-chats-content">
+      <div className="compact-chats-header">
+        <h2>Generated Digests</h2>
+        <p className="subtitle">View AI-generated digests organized by tag</p>
+      </div>
+
+      {error && <div className="error-message">{error}</div>}
+
+      <div className="view-controls">
+        <div className="form-group">
+          <label htmlFor="digest-date">Select Date:</label>
+          <input
+            type="date"
+            id="digest-date"
+            value={digestDate}
+            onChange={(e) => setDigestDate(e.target.value)}
+            className="date-input"
+          />
+        </div>
+
+        {digestDates.length > 0 && (
+          <div className="available-dates">
+            <h3>Available Dates:</h3>
+            <div className="date-pills">
+              {digestDates.map((date) => (
+                <button
+                  key={date.toISOString()}
+                  onClick={() => setDigestDate(date.toISOString().split('T')[0])}
+                  className={`date-pill ${
+                    date.toISOString().split('T')[0] === digestDate ? 'active' : ''
+                  }`}
+                >
+                  {date.toLocaleDateString()}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {loadingDigests ? (
+          <div className="loading-state">Loading digests...</div>
+        ) : (
+          <div className="digests-list">
+            <h3>
+              Digests for {new Date(digestDate).toLocaleDateString()} ({generatedDigests.length})
+            </h3>
+            {generatedDigests.length === 0 ? (
+              <p className="no-messages">No digests found for this date</p>
+            ) : (
+              <div className="digests">
+                {generatedDigests.map((digest, index) => (
+                  <div key={index} className="digest-item">
+                    <div className="digest-header">
+                      <span className="digest-tag-badge">{digest.tag}</span>
+                      <span className="digest-meta">
+                        {digest.messageCount} messages • Generated{' '}
+                        {new Date(digest.generatedAt).toLocaleString()}
+                      </span>
+                    </div>
+                    <div className="digest-content">{digest.digest}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        <div className="action-buttons">
+          <button onClick={() => setViewMode('manage')} className="btn btn-secondary">
+            ← Back to Manage
+          </button>
+          <button onClick={() => setViewMode('monitor')} className="btn btn-secondary">
+            Monitor More →
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <div className="compact-chats-page">
       <div className="page-header">
@@ -538,12 +831,19 @@ export function CompactChatsPage({ onBack }: CompactChatsPageProps) {
           >
             View
           </button>
+          <button
+            onClick={() => setViewMode('digests')}
+            className={`tab ${viewMode === 'digests' ? 'active' : ''}`}
+          >
+            Digests
+          </button>
         </div>
       </div>
 
       {viewMode === 'manage' && renderManageView()}
       {viewMode === 'monitor' && renderMonitorView()}
       {viewMode === 'view' && renderViewMode()}
+      {viewMode === 'digests' && renderDigestsView()}
     </div>
   );
 }

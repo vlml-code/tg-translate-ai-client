@@ -194,6 +194,94 @@ export class TelegramService {
     this.client = null;
   }
 
+  /**
+   * Check if user can post messages to a channel/group
+   */
+  async canPostToChannel(chatId: string): Promise<boolean> {
+    if (!this.client) throw new Error('Client not initialized');
+
+    try {
+      const entity = await this.client.getEntity(chatId);
+
+      if (entity instanceof Api.Channel) {
+        // Check if we have posting rights
+        // For channels: need to be creator or admin with post_messages right
+        // For megagroups: check if not restricted
+        if (entity.broadcast) {
+          // It's a channel (not a supergroup)
+          return entity.creator || (entity.adminRights?.postMessages || false);
+        } else {
+          // It's a supergroup/megagroup - check if we can send messages
+          return !entity.banned;
+        }
+      } else if (entity instanceof Api.Chat) {
+        // Regular group - check if we're not restricted
+        return true; // Regular groups usually allow all members to post
+      }
+
+      return false;
+    } catch (error) {
+      console.error(`Failed to check posting rights for ${chatId}:`, error);
+      return false;
+    }
+  }
+
+  /**
+   * Get channels/groups where user can post
+   */
+  async getPostableChats(): Promise<ChatInfo[]> {
+    const allChats = await this.getChats();
+    const postableChats: ChatInfo[] = [];
+
+    for (const chat of allChats) {
+      // Only check channels and groups
+      if (chat.isChannel || chat.isGroup) {
+        const canPost = await this.canPostToChannel(chat.id);
+        if (canPost) {
+          postableChats.push(chat);
+        }
+      }
+    }
+
+    return postableChats;
+  }
+
+  /**
+   * Send a message to a channel/chat
+   */
+  async sendMessage(chatId: string, message: string): Promise<void> {
+    if (!this.client) throw new Error('Client not initialized');
+
+    try {
+      await this.client.sendMessage(chatId, {
+        message,
+        parseMode: 'md', // Use Markdown parsing
+      });
+    } catch (error) {
+      console.error(`Failed to send message to ${chatId}:`, error);
+      throw new Error(`Failed to send message: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Send multiple messages to a channel/chat (for long content)
+   */
+  async sendMessages(chatId: string, messages: string[]): Promise<void> {
+    if (!this.client) throw new Error('Client not initialized');
+
+    for (let i = 0; i < messages.length; i++) {
+      try {
+        await this.sendMessage(chatId, messages[i]);
+        // Add a small delay between messages to avoid rate limiting
+        if (i < messages.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      } catch (error) {
+        throw new Error(`Failed to send message ${i + 1}/${messages.length}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
+    }
+  }
+
   getClient(): TelegramClient | null {
     return this.client;
   }

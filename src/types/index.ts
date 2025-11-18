@@ -41,6 +41,9 @@ export interface TranslationSettings {
   apiKey: string;
   prompt: string;
   simplifyPrompt: string;
+  deepseekApiKey: string;
+  digestPrompt: string;
+  digestTargetChannelId: string;
 }
 
 export type TelegramMessage = Api.Message;
