@@ -43,13 +43,6 @@ export function CompactChatsPage({ onBack }: CompactChatsPageProps) {
   const [digestDates, setDigestDates] = useState<Date[]>([]);
   const [loadingDigests, setLoadingDigests] = useState(false);
 
-  // Channel posting state
-  const [postableChats, setPostableChats] = useState<ChatInfo[]>([]);
-  const [selectedTargetChannel, setSelectedTargetChannel] = useState<string>('');
-  const [loadingPostableChats, setLoadingPostableChats] = useState(false);
-  const [sendingToChannel, setSendingToChannel] = useState(false);
-  const [sendProgress, setSendProgress] = useState<string>('');
-
   // Tag editing state
   const [editingTagForChannel, setEditingTagForChannel] = useState<string | null>(null);
   const [tempTag, setTempTag] = useState<string>('');
@@ -322,8 +315,49 @@ export function CompactChatsPage({ onBack }: CompactChatsPageProps) {
           }
 
           setMonitorProgress(
-            `✓ Completed! Saved ${totalMessages} new messages (${duplicatesSkipped} duplicates skipped). Generated ${digestCount} digests.`
+            `✓ Generated ${digestCount} digests. Saved ${totalMessages} new messages (${duplicatesSkipped} duplicates skipped).`
           );
+
+          // Step 3: Auto-send digests to configured channel if available
+          if (settings.digestTargetChannelId && digestCount > 0) {
+            try {
+              setMonitorProgress('Sending digests to channel...');
+
+              // Get the generated digests for this date
+              const digestsToSend = await databaseService.getDigestsByDate(targetDate);
+
+              for (let i = 0; i < digestsToSend.length; i++) {
+                const digest = digestsToSend[i];
+                setMonitorProgress(`Sending digest ${i + 1}/${digestsToSend.length} (${digest.tag})...`);
+
+                try {
+                  // Prepare digest for telegram (convert markdown, split if needed)
+                  const messages = prepareDigestForTelegram(digest.digest, digest.tag);
+                  console.log(`Sending ${messages.length} message(s) for tag "${digest.tag}"`);
+
+                  // Send all messages for this digest
+                  await telegramService.sendMessages(settings.digestTargetChannelId, messages);
+                  console.log(`Successfully sent digest for tag "${digest.tag}"`);
+                } catch (sendErr) {
+                  console.error(`Failed to send digest for tag "${digest.tag}":`, sendErr);
+                  throw sendErr; // Stop on first error
+                }
+              }
+
+              setMonitorProgress(
+                `✓ Completed! Saved ${totalMessages} messages, generated ${digestCount} digests, and sent them to channel.`
+              );
+            } catch (sendErr) {
+              console.error('Failed to send digests to channel:', sendErr);
+              setMonitorProgress(
+                `✓ Generated ${digestCount} digests but failed to send to channel. Check settings.`
+              );
+            }
+          } else {
+            setMonitorProgress(
+              `✓ Completed! Saved ${totalMessages} new messages, generated ${digestCount} digests.`
+            );
+          }
         } catch (digestErr) {
           console.error('Failed to generate digests:', digestErr);
           setMonitorProgress(
@@ -397,81 +431,6 @@ export function CompactChatsPage({ onBack }: CompactChatsPageProps) {
     }
   };
 
-  const loadPostableChats = async () => {
-    try {
-      setLoadingPostableChats(true);
-      console.log('Loading postable chats...');
-      const chats = await telegramService.getPostableChats();
-      console.log(`Found ${chats.length} postable chats`);
-      setPostableChats(chats);
-
-      // Auto-select first channel if none selected
-      if (chats.length > 0 && !selectedTargetChannel) {
-        setSelectedTargetChannel(chats[0].id);
-      }
-    } catch (err) {
-      console.error('Failed to load postable chats:', err);
-      setError('Failed to load channels where you can post');
-    } finally {
-      setLoadingPostableChats(false);
-    }
-  };
-
-  const handleSendDigestsToChannel = async () => {
-    if (!selectedTargetChannel) {
-      setError('Please select a channel to send digests to');
-      return;
-    }
-
-    if (generatedDigests.length === 0) {
-      setError('No digests to send');
-      return;
-    }
-
-    try {
-      setSendingToChannel(true);
-      setError('');
-      setSendProgress('');
-
-      const targetChannel = postableChats.find(c => c.id === selectedTargetChannel);
-      const channelName = targetChannel?.title || 'channel';
-
-      for (let i = 0; i < generatedDigests.length; i++) {
-        const digest = generatedDigests[i];
-        setSendProgress(`Sending digest ${i + 1}/${generatedDigests.length} (${digest.tag})...`);
-
-        try {
-          // Prepare digest for telegram (convert markdown, split if needed)
-          const messages = prepareDigestForTelegram(digest.digest, digest.tag);
-
-          console.log(`Sending ${messages.length} message(s) for tag "${digest.tag}"`);
-
-          // Send all messages for this digest
-          await telegramService.sendMessages(selectedTargetChannel, messages);
-
-          console.log(`Successfully sent digest for tag "${digest.tag}"`);
-        } catch (digestErr) {
-          console.error(`Failed to send digest for tag "${digest.tag}":`, digestErr);
-          throw digestErr; // Stop on first error
-        }
-      }
-
-      setSendProgress(`✓ Successfully sent ${generatedDigests.length} digest(s) to ${channelName}!`);
-
-      // Clear progress after 3 seconds
-      setTimeout(() => {
-        setSendProgress('');
-      }, 3000);
-    } catch (err) {
-      console.error('Failed to send digests to channel:', err);
-      const errorMessage = err instanceof Error ? err.message : 'Failed to send digests to channel';
-      setError(errorMessage);
-      setSendProgress('');
-    } finally {
-      setSendingToChannel(false);
-    }
-  };
-
   useEffect(() => {
     if (viewMode === 'view') {
       handleViewMessages();
@@ -481,10 +440,6 @@ export function CompactChatsPage({ onBack }: CompactChatsPageProps) {
   useEffect(() => {
     if (viewMode === 'digests') {
       handleViewDigests();
-      // Load postable chats when entering digests view
-      if (postableChats.length === 0) {
-        loadPostableChats();
-      }
     }
   }, [viewMode, digestDate]);
 
@@ -807,52 +762,6 @@ export function CompactChatsPage({ onBack }: CompactChatsPageProps) {
                 </button>
               ))}
             </div>
-          </div>
-        )}
-
-        {/* Channel Selector for Posting */}
-        {generatedDigests.length > 0 && (
-          <div className="channel-selector">
-            <h3>Send to Channel</h3>
-            <div className="form-group">
-              <label htmlFor="target-channel">Select Channel:</label>
-              {loadingPostableChats ? (
-                <div className="loading-state" style={{ padding: '0.5rem' }}>Loading channels...</div>
-              ) : postableChats.length === 0 ? (
-                <p className="no-channels">No channels found where you can post. You need to be an admin with posting rights.</p>
-              ) : (
-                <select
-                  id="target-channel"
-                  value={selectedTargetChannel}
-                  onChange={(e) => setSelectedTargetChannel(e.target.value)}
-                  className="channel-select"
-                  disabled={sendingToChannel}
-                >
-                  {postableChats.map((chat) => (
-                    <option key={chat.id} value={chat.id}>
-                      {chat.title} {chat.isChannel ? '(Channel)' : '(Group)'}
-                    </option>
-                  ))}
-                </select>
-              )}
-            </div>
-
-            {sendProgress && (
-              <div className="send-progress">
-                {sendProgress}
-              </div>
-            )}
-
-            {postableChats.length > 0 && (
-              <button
-                onClick={handleSendDigestsToChannel}
-                className="btn btn-primary"
-                disabled={sendingToChannel || !selectedTargetChannel}
-                style={{ marginTop: '0.5rem' }}
-              >
-                {sendingToChannel ? 'Sending...' : `Send ${generatedDigests.length} Digest(s) to Channel`}
-              </button>
-            )}
           </div>
         )}
 

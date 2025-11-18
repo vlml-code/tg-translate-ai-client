@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { TranslationSettings } from '../types';
+import { TranslationSettings, ChatInfo } from '../types';
+import { telegramService } from '../services/telegramClient';
 import './SettingsModal.css';
 
 interface SettingsModalProps {
@@ -16,10 +17,30 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onSave
 }) => {
   const [settings, setSettings] = useState<TranslationSettings>(initialSettings);
+  const [postableChats, setPostableChats] = useState<ChatInfo[]>([]);
+  const [loadingChannels, setLoadingChannels] = useState(false);
 
   useEffect(() => {
     setSettings(initialSettings);
   }, [initialSettings]);
+
+  useEffect(() => {
+    if (isOpen) {
+      loadPostableChannels();
+    }
+  }, [isOpen]);
+
+  const loadPostableChannels = async () => {
+    try {
+      setLoadingChannels(true);
+      const chats = await telegramService.getPostableChats();
+      setPostableChats(chats);
+    } catch (error) {
+      console.error('Failed to load postable channels:', error);
+    } finally {
+      setLoadingChannels(false);
+    }
+  };
 
   if (!isOpen) {
     return null;
@@ -97,6 +118,43 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             />
             <small>
               This prompt guides how DeepSeek creates digests from your monitored channel messages.
+            </small>
+          </label>
+
+          <label className="form-field">
+            <span>Digest target channel</span>
+            {loadingChannels ? (
+              <div style={{ padding: '0.5rem', fontSize: '0.9rem', color: 'var(--tg-text-secondary)' }}>
+                Loading channels...
+              </div>
+            ) : postableChats.length === 0 ? (
+              <div style={{ padding: '0.5rem', fontSize: '0.9rem', color: 'var(--tg-text-secondary)' }}>
+                No channels found where you can post. You need admin rights.
+              </div>
+            ) : (
+              <select
+                value={settings.digestTargetChannelId}
+                onChange={(e) => setSettings({ ...settings, digestTargetChannelId: e.target.value })}
+                style={{
+                  background: 'rgba(12, 19, 28, 0.9)',
+                  border: '1px solid rgba(255, 255, 255, 0.15)',
+                  borderRadius: '10px',
+                  padding: '12px 14px',
+                  fontSize: '14px',
+                  color: 'var(--tg-text-primary)',
+                  width: '100%'
+                }}
+              >
+                <option value="">None (don't send digests)</option>
+                {postableChats.map((chat) => (
+                  <option key={chat.id} value={chat.id}>
+                    {chat.title} {chat.isChannel ? '(Channel)' : '(Group)'}
+                  </option>
+                ))}
+              </select>
+            )}
+            <small>
+              Digests will be automatically sent to this channel after monitoring completes.
             </small>
           </label>
         </div>
