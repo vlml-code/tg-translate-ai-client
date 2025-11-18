@@ -15,6 +15,7 @@ export interface SavedChannel {
   id: string;
   title: string;
   isChecked: boolean;
+  tag?: string;
   lastArchived?: Date;
 }
 
@@ -56,6 +57,7 @@ class DatabaseService {
         if (!db.objectStoreNames.contains(STORES.SAVED_CHANNELS)) {
           const channelStore = db.createObjectStore(STORES.SAVED_CHANNELS, { keyPath: 'id' });
           channelStore.createIndex('isChecked', 'isChecked', { unique: false });
+          channelStore.createIndex('tag', 'tag', { unique: false });
         }
 
         // Create archivedMessages store
@@ -133,6 +135,49 @@ class DatabaseService {
         resolve(checkedChannels);
       };
       request.onerror = () => reject(new Error('Failed to get checked channels'));
+    });
+  }
+
+  /**
+   * Get channels by tag
+   */
+  async getChannelsByTag(tag: string): Promise<SavedChannel[]> {
+    const db = await this.ensureDb();
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction([STORES.SAVED_CHANNELS], 'readonly');
+      const store = transaction.objectStore(STORES.SAVED_CHANNELS);
+      const request = store.getAll();
+
+      request.onsuccess = () => {
+        const allChannels = request.result as SavedChannel[];
+        const channelsByTag = allChannels.filter(ch => ch.tag === tag);
+        resolve(channelsByTag);
+      };
+      request.onerror = () => reject(new Error('Failed to get channels by tag'));
+    });
+  }
+
+  /**
+   * Get all unique tags
+   */
+  async getAllTags(): Promise<string[]> {
+    const db = await this.ensureDb();
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction([STORES.SAVED_CHANNELS], 'readonly');
+      const store = transaction.objectStore(STORES.SAVED_CHANNELS);
+      const request = store.getAll();
+
+      request.onsuccess = () => {
+        const allChannels = request.result as SavedChannel[];
+        const tags = new Set<string>();
+        allChannels.forEach(ch => {
+          if (ch.tag) {
+            tags.add(ch.tag);
+          }
+        });
+        resolve(Array.from(tags).sort());
+      };
+      request.onerror = () => reject(new Error('Failed to get tags'));
     });
   }
 

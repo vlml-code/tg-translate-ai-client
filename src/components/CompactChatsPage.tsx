@@ -8,7 +8,7 @@ interface CompactChatsPageProps {
   onBack: () => void;
 }
 
-type ViewMode = 'manage' | 'archive' | 'view';
+type ViewMode = 'manage' | 'monitor' | 'view';
 
 export function CompactChatsPage({ onBack }: CompactChatsPageProps) {
   const [chats, setChats] = useState<ChatInfo[]>([]);
@@ -17,12 +17,12 @@ export function CompactChatsPage({ onBack }: CompactChatsPageProps) {
   const [error, setError] = useState<string>('');
   const [viewMode, setViewMode] = useState<ViewMode>('manage');
 
-  // Archive mode state
-  const [archiveDate, setArchiveDate] = useState<string>(
+  // Monitor mode state
+  const [monitorDate, setMonitorDate] = useState<string>(
     new Date().toISOString().split('T')[0]
   );
-  const [archiving, setArchiving] = useState(false);
-  const [archiveProgress, setArchiveProgress] = useState<string>('');
+  const [monitoring, setMonitoring] = useState(false);
+  const [monitorProgress, setMonitorProgress] = useState<string>('');
 
   // View mode state
   const [viewDate, setViewDate] = useState<string>(
@@ -31,6 +31,10 @@ export function CompactChatsPage({ onBack }: CompactChatsPageProps) {
   const [archivedMessages, setArchivedMessages] = useState<ArchivedMessage[]>([]);
   const [archivedDates, setArchivedDates] = useState<Date[]>([]);
   const [loadingMessages, setLoadingMessages] = useState(false);
+
+  // Tag editing state
+  const [editingTagForChannel, setEditingTagForChannel] = useState<string | null>(null);
+  const [tempTag, setTempTag] = useState<string>('');
 
   useEffect(() => {
     loadData();
@@ -69,11 +73,13 @@ export function CompactChatsPage({ onBack }: CompactChatsPageProps) {
 
   const handleCheckboxChange = async (chat: ChatInfo, checked: boolean) => {
     try {
+      const existingChannel = savedChannels.get(chat.id);
       const savedChannel: SavedChannel = {
         id: chat.id,
         title: chat.title,
         isChecked: checked,
-        lastArchived: savedChannels.get(chat.id)?.lastArchived,
+        tag: existingChannel?.tag,
+        lastArchived: existingChannel?.lastArchived,
       };
 
       await databaseService.saveChannel(savedChannel);
@@ -88,11 +94,46 @@ export function CompactChatsPage({ onBack }: CompactChatsPageProps) {
     }
   };
 
-  const handleArchiveMessages = async () => {
+  const handleTagEdit = (channelId: string, currentTag?: string) => {
+    setEditingTagForChannel(channelId);
+    setTempTag(currentTag || '');
+  };
+
+  const handleTagSave = async (channelId: string) => {
     try {
-      setArchiving(true);
+      const existingChannel = savedChannels.get(channelId);
+      if (!existingChannel) return;
+
+      const updatedChannel: SavedChannel = {
+        ...existingChannel,
+        tag: tempTag.trim() || undefined,
+      };
+
+      await databaseService.saveChannel(updatedChannel);
+
+      // Update local state
+      const newSavedChannels = new Map(savedChannels);
+      newSavedChannels.set(channelId, updatedChannel);
+      setSavedChannels(newSavedChannels);
+
+      setEditingTagForChannel(null);
+      setTempTag('');
+    } catch (err) {
+      console.error('Failed to save tag:', err);
+      setError('Failed to save tag');
+    }
+  };
+
+  const handleTagCancel = () => {
+    setEditingTagForChannel(null);
+    setTempTag('');
+  };
+
+  const handleMonitorMessages = async () => {
+    try {
+      setMonitoring(true);
       setError('');
-      setArchiveProgress('');
+      setMonitorProgress('');
 
       const checkedChannels = Array.from(savedChannels.values()).filter(
         (ch) => ch.isChecked
@@ -100,11 +141,11 @@ export function CompactChatsPage({ onBack }: CompactChatsPageProps) {
 
       if (checkedChannels.length === 0) {
         setError('No channels selected. Please check at least one channel.');
-        setArchiving(false);
+        setMonitoring(false);
         return;
       }
 
-      const targetDate = new Date(archiveDate);
+      const targetDate = new Date(monitorDate);
       const startOfDay = new Date(targetDate);
       startOfDay.setHours(0, 0, 0, 0);
       const endOfDay = new Date(targetDate);
@@ -114,7 +155,7 @@ export function CompactChatsPage({ onBack }: CompactChatsPageProps) {
 
       for (let i = 0; i < checkedChannels.length; i++) {
         const channel = checkedChannels[i];
-        setArchiveProgress(
+        setMonitorProgress(
           `Processing ${channel.title} (${i + 1}/${checkedChannels.length})...`
         );
 
@@ -145,17 +186,17 @@ export function CompactChatsPage({ onBack }: CompactChatsPageProps) {
             await databaseService.saveMessages(archivedMessages);
             totalMessages += archivedMessages.length;
 
-            // Update last archived date
+            // Update last monitored date
             await databaseService.updateChannelLastArchived(channel.id, new Date());
           }
         } catch (err) {
-          console.error(`Failed to archive messages from ${channel.title}:`, err);
+          console.error(`Failed to monitor messages from ${channel.title}:`, err);
           // Continue with other channels
         }
       }
 
-      setArchiveProgress(
-        `✓ Completed! Archived ${totalMessages} messages from ${checkedChannels.length} channels.`
+      setMonitorProgress(
+        `✓ Completed! Saved ${totalMessages} messages from ${checkedChannels.length} channels.`
       );
 
       // Reload data to update UI
@@ -164,13 +205,13 @@ export function CompactChatsPage({ onBack }: CompactChatsPageProps) {
       // Auto-switch to view mode after a delay
       setTimeout(() => {
         setViewMode('view');
-        setViewDate(archiveDate);
+        setViewDate(monitorDate);
       }, 2000);
     } catch (err) {
-      console.error('Failed to archive messages:', err);
-      setError('Failed to archive messages. Please try again.');
+      console.error('Failed to monitor messages:', err);
+      setError('Failed to monitor messages. Please try again.');
     } finally {
-      setArchiving(false);
+      setMonitoring(false);
     }
   };
 
@@ -204,7 +245,7 @@ export function CompactChatsPage({ onBack }: CompactChatsPageProps) {
     <div className="compact-chats-content">
       <div className="compact-chats-header">
         <h2>Manage Channels</h2>
-        <p className="subtitle">Select channels to archive messages from</p>
+        <p className="subtitle">Select channels to monitor for digest</p>
       </div>
 
       {error && <div className="error-message">{error}</div>}
@@ -217,6 +258,8 @@ export function CompactChatsPage({ onBack }: CompactChatsPageProps) {
             const saved = savedChannels.get(chat.id);
             const isChecked = saved?.isChecked || false;
             const lastArchived = saved?.lastArchived;
+            const tag = saved?.tag;
+            const isEditingTag = editingTagForChannel === chat.id;
 
             return (
               <div key={chat.id} className="compact-chat-item">
@@ -230,17 +273,70 @@ export function CompactChatsPage({ onBack }: CompactChatsPageProps) {
                 <label htmlFor={`chat-${chat.id}`} className="chat-label">
                   <div className="chat-info">
                     <span className="chat-title">{chat.title}</span>
-                    {lastArchived && (
-                      <span className="last-archived">
-                        Last archived: {new Date(lastArchived).toLocaleString()}
-                      </span>
-                    )}
+                    <div className="chat-metadata">
+                      {lastArchived && (
+                        <span className="last-archived">
+                          Last monitored: {new Date(lastArchived).toLocaleString()}
+                        </span>
+                      )}
+                    </div>
                   </div>
                   <div className="chat-meta">
                     {chat.isChannel && <span className="badge">Channel</span>}
                     {chat.isGroup && <span className="badge">Group</span>}
                   </div>
                 </label>
+                <div className="tag-section" onClick={(e) => e.stopPropagation()}>
+                  {isEditingTag ? (
+                    <div className="tag-edit">
+                      <input
+                        type="text"
+                        value={tempTag}
+                        onChange={(e) => setTempTag(e.target.value)}
+                        placeholder="Tag name"
+                        className="tag-input"
+                        autoFocus
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            handleTagSave(chat.id);
+                          } else if (e.key === 'Escape') {
+                            handleTagCancel();
+                          }
+                        }}
+                      />
+                      <button
+                        onClick={() => handleTagSave(chat.id)}
+                        className="tag-save-btn"
+                        title="Save"
+                      >
+                        ✓
+                      </button>
+                      <button
+                        onClick={handleTagCancel}
+                        className="tag-cancel-btn"
+                        title="Cancel"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="tag-display">
+                      {tag ? (
+                        <span className="tag-badge" onClick={() => handleTagEdit(chat.id, tag)}>
+                          {tag}
+                        </span>
+                      ) : (
+                        <button
+                          className="tag-add-btn"
+                          onClick={() => handleTagEdit(chat.id)}
+                          title="Add tag"
+                        >
+                          + Tag
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
             );
           })}
@@ -248,42 +344,45 @@ export function CompactChatsPage({ onBack }: CompactChatsPageProps) {
       )}
 
       <div className="action-buttons">
-        <button onClick={() => setViewMode('archive')} className="btn btn-primary">
-          Archive Messages →
+        <button onClick={() => setViewMode('monitor')} className="btn btn-primary">
+          Monitor Messages →
         </button>
       </div>
     </div>
   );
 
-  const renderArchiveView = () => (
+  const renderMonitorView = () => (
     <div className="compact-chats-content">
       <div className="compact-chats-header">
-        <h2>Archive Messages</h2>
-        <p className="subtitle">Fetch and save messages from selected channels</p>
+        <h2>Monitor Messages</h2>
+        <p className="subtitle">Fetch and save messages from selected channels for digest</p>
       </div>
 
       {error && <div className="error-message">{error}</div>}
 
       <div className="archive-controls">
         <div className="form-group">
-          <label htmlFor="archive-date">Select Date to Archive:</label>
+          <label htmlFor="monitor-date">Select Date to Monitor:</label>
           <input
             type="date"
-            id="archive-date"
-            value={archiveDate}
-            onChange={(e) => setArchiveDate(e.target.value)}
-            disabled={archiving}
+            id="monitor-date"
+            value={monitorDate}
+            onChange={(e) => setMonitorDate(e.target.value)}
+            disabled={monitoring}
             className="date-input"
           />
         </div>
 
         <div className="selected-channels">
-          <h3>Selected Channels:</h3>
+          <h3>Monitored Channels:</h3>
           <ul>
             {Array.from(savedChannels.values())
               .filter((ch) => ch.isChecked)
               .map((ch) => (
-                <li key={ch.id}>{ch.title}</li>
+                <li key={ch.id}>
+                  {ch.title}
+                  {ch.tag && <span className="channel-tag-inline"> [{ch.tag}]</span>}
+                </li>
               ))}
           </ul>
           {Array.from(savedChannels.values()).filter((ch) => ch.isChecked).length === 0 && (
@@ -291,31 +390,31 @@ export function CompactChatsPage({ onBack }: CompactChatsPageProps) {
           )}
         </div>
 
-        {archiveProgress && (
-          <div className="archive-progress">{archiveProgress}</div>
+        {monitorProgress && (
+          <div className="archive-progress">{monitorProgress}</div>
         )}
 
         <div className="action-buttons">
           <button
             onClick={() => setViewMode('manage')}
             className="btn btn-secondary"
-            disabled={archiving}
+            disabled={monitoring}
           >
             ← Back to Manage
           </button>
           <button
-            onClick={handleArchiveMessages}
+            onClick={handleMonitorMessages}
             className="btn btn-primary"
-            disabled={archiving}
+            disabled={monitoring}
           >
-            {archiving ? 'Archiving...' : 'Start Archiving'}
+            {monitoring ? 'Monitoring...' : 'Start Monitoring'}
           </button>
           <button
             onClick={() => setViewMode('view')}
             className="btn btn-secondary"
-            disabled={archiving}
+            disabled={monitoring}
           >
-            View Archived →
+            View Saved →
           </button>
         </div>
       </div>
@@ -325,8 +424,8 @@ export function CompactChatsPage({ onBack }: CompactChatsPageProps) {
   const renderViewMode = () => (
     <div className="compact-chats-content">
       <div className="compact-chats-header">
-        <h2>View Archived Messages</h2>
-        <p className="subtitle">Browse messages saved to the database</p>
+        <h2>View Digest Messages</h2>
+        <p className="subtitle">Browse messages saved from monitored channels</p>
       </div>
 
       {error && <div className="error-message">{error}</div>}
@@ -375,11 +474,15 @@ export function CompactChatsPage({ onBack }: CompactChatsPageProps) {
               <div className="messages">
                 {archivedMessages.map((msg, index) => {
                   const chat = chats.find((c) => c.id === msg.chatId);
+                  const savedChannel = savedChannels.get(msg.chatId);
                   return (
                     <div key={index} className="archived-message">
                       <div className="message-header">
                         <span className="channel-name">
                           {chat?.title || msg.chatId}
+                          {savedChannel?.tag && (
+                            <span className="message-tag"> [{savedChannel.tag}]</span>
+                          )}
                         </span>
                         <span className="message-time">
                           {new Date(msg.date).toLocaleTimeString()}
@@ -401,8 +504,8 @@ export function CompactChatsPage({ onBack }: CompactChatsPageProps) {
           <button onClick={() => setViewMode('manage')} className="btn btn-secondary">
             ← Back to Manage
           </button>
-          <button onClick={() => setViewMode('archive')} className="btn btn-secondary">
-            Archive More →
+          <button onClick={() => setViewMode('monitor')} className="btn btn-secondary">
+            Monitor More →
           </button>
         </div>
       </div>
@@ -415,7 +518,7 @@ export function CompactChatsPage({ onBack }: CompactChatsPageProps) {
         <button onClick={onBack} className="back-button">
           ← Back to Chats
         </button>
-        <h1>Channel Archive Manager</h1>
+        <h1>Digest Monitoring</h1>
         <div className="view-mode-tabs">
           <button
             onClick={() => setViewMode('manage')}
@@ -424,10 +527,10 @@ export function CompactChatsPage({ onBack }: CompactChatsPageProps) {
             Manage
           </button>
           <button
-            onClick={() => setViewMode('archive')}
-            className={`tab ${viewMode === 'archive' ? 'active' : ''}`}
+            onClick={() => setViewMode('monitor')}
+            className={`tab ${viewMode === 'monitor' ? 'active' : ''}`}
           >
-            Archive
+            Monitor
           </button>
           <button
             onClick={() => setViewMode('view')}
@@ -439,7 +542,7 @@ export function CompactChatsPage({ onBack }: CompactChatsPageProps) {
       </div>
 
       {viewMode === 'manage' && renderManageView()}
-      {viewMode === 'archive' && renderArchiveView()}
+      {viewMode === 'monitor' && renderMonitorView()}
       {viewMode === 'view' && renderViewMode()}
     </div>
   );

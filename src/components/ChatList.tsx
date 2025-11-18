@@ -91,8 +91,8 @@ export const ChatList: React.FC<ChatListProps> = ({
         </div>
         <div className="chat-list-actions">
           <button className="archive-btn" onClick={onOpenArchive}>
-            <span aria-hidden="true">📁</span>
-            <span>Archive</span>
+            <span aria-hidden="true">📊</span>
+            <span>Digest</span>
           </button>
           <button className="settings-btn" onClick={onOpenSettings}>
             <span aria-hidden="true">⚙️</span>
