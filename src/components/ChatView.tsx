@@ -157,6 +157,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
   const [error, setError] = useState('');
   const [translations, setTranslations] = useState<TranslationState>({});
   const [dictionaryRefresh, setDictionaryRefresh] = useState(0); // Increment to refresh dictionary-based rendering
+  const [expandedComments, setExpandedComments] = useState<Record<number, { isExpanded: boolean; comments: MessageInfo[]; isLoading: boolean }>>({});
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const isInitialLoad = useRef(true);
 
@@ -412,6 +413,51 @@ export const ChatView: React.FC<ChatViewProps> = ({
     }
   };
 
+  const handleToggleComments = async (message: MessageInfo) => {
+    const messageId = message.id;
+    const currentState = expandedComments[messageId];
+
+    // If already expanded, just toggle collapse
+    if (currentState?.isExpanded) {
+      setExpandedComments(prev => ({
+        ...prev,
+        [messageId]: { ...currentState, isExpanded: false }
+      }));
+      return;
+    }
+
+    // If comments are already loaded, just expand
+    if (currentState?.comments.length) {
+      setExpandedComments(prev => ({
+        ...prev,
+        [messageId]: { ...currentState, isExpanded: true }
+      }));
+      return;
+    }
+
+    // Load comments
+    if (!message.replyChannelId) return;
+
+    setExpandedComments(prev => ({
+      ...prev,
+      [messageId]: { isExpanded: true, comments: [], isLoading: true }
+    }));
+
+    try {
+      const comments = await telegramService.getComments(message.replyChannelId, messageId, 20);
+      setExpandedComments(prev => ({
+        ...prev,
+        [messageId]: { isExpanded: true, comments, isLoading: false }
+      }));
+    } catch (error) {
+      console.error('Failed to load comments:', error);
+      setExpandedComments(prev => ({
+        ...prev,
+        [messageId]: { isExpanded: false, comments: [], isLoading: false }
+      }));
+    }
+  };
+
   const renderActionButtonLabel = (messageId: number, type: AugmentationType) => {
     const state = translations[messageId]?.[type];
 
@@ -496,10 +542,15 @@ export const ChatView: React.FC<ChatViewProps> = ({
                   <div className="message-sender">{message.senderName}</div>
                 )}
                 <div className="message-bubble">
+                  {message.photoUrl && (
+                    <div className="message-photo">
+                      <img src={message.photoUrl} alt="Message photo" />
+                    </div>
+                  )}
                   <div className="message-text">
                     {message.text
                       ? <MessageTextWithPinyin text={message.text} messageKey={`msg-${message.id}`} refreshTrigger={dictionaryRefresh} />
-                      : '[Media]'}
+                      : (message.photoUrl ? '' : '[Media]')}
                   </div>
                   {translationContent?.isShowing && translationContent.content && (
                     <div className="message-translation">
@@ -521,6 +572,48 @@ export const ChatView: React.FC<ChatViewProps> = ({
                     </div>
                   )}
                   <div className="message-time">{formatTime(message.date)}</div>
+                  {message.hasComments && message.commentCount !== undefined && message.commentCount > 0 && (
+                    <div className="message-comments-toggle">
+                      <button
+                        className="comments-btn"
+                        onClick={() => handleToggleComments(message)}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                        </svg>
+                        <span>{message.commentCount} {message.commentCount === 1 ? 'comment' : 'comments'}</span>
+                        <svg
+                          width="10"
+                          height="10"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          style={{
+                            transform: expandedComments[message.id]?.isExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
+                            transition: 'transform 0.2s'
+                          }}
+                        >
+                          <polyline points="6 9 12 15 18 9"></polyline>
+                        </svg>
+                      </button>
+                    </div>
+                  )}
+                  {expandedComments[message.id]?.isExpanded && (
+                    <div className="message-comments">
+                      {expandedComments[message.id]?.isLoading ? (
+                        <div className="comments-loading">Loading comments...</div>
+                      ) : (
+                        expandedComments[message.id]?.comments.map(comment => (
+                          <div key={comment.id} className="comment-item">
+                            <div className="comment-sender">{comment.senderName}</div>
+                            <div className="comment-text">{comment.text}</div>
+                            <div className="comment-time">{formatTime(comment.date)}</div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  )}
                 </div>
                 <div className="message-actions">
                   <button

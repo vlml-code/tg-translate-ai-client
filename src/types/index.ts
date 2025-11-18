@@ -30,6 +30,10 @@ export interface MessageInfo {
   senderName: string;
   isOutgoing: boolean;
   media?: any;
+  photoUrl?: string;  // Data URL for photo display
+  hasComments?: boolean;  // Whether message has comments enabled
+  commentCount?: number;  // Number of comments/replies
+  replyChannelId?: string;  // Discussion channel ID for fetching comments
 }
 
 export interface AuthStep {

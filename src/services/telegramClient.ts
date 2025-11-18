@@ -166,6 +166,40 @@ export class TelegramService {
           }
         }
 
+        // Download photo if available
+        let photoUrl: string | undefined;
+        if (msg.media && msg.media instanceof Api.MessageMediaPhoto) {
+          try {
+            const buffer = await this.client.downloadMedia(msg.media, {
+              thumb: 2, // Medium size thumbnail for performance
+            });
+            if (buffer) {
+              // Convert buffer to data URL
+              const blob = new Blob([buffer], { type: 'image/jpeg' });
+              photoUrl = await new Promise<string>((resolve) => {
+                const reader = new FileReader();
+                reader.onloadend = () => resolve(reader.result as string);
+                reader.readAsDataURL(blob);
+              });
+            }
+          } catch (error) {
+            console.error('Failed to download photo:', error);
+          }
+        }
+
+        // Extract comment/reply information
+        let hasComments = false;
+        let commentCount = 0;
+        let replyChannelId: string | undefined;
+
+        if (msg.replies) {
+          hasComments = msg.replies.comments || false;
+          commentCount = msg.replies.replies || 0;
+          if (msg.replies.channelId) {
+            replyChannelId = msg.replies.channelId.toString();
+          }
+        }
+
         result.push({
           id: msg.id,
           text: msg.message || '',
@@ -174,11 +208,78 @@ export class TelegramService {
           senderName,
           isOutgoing: msg.out || false,
           media: msg.media,
+          photoUrl,
+          hasComments,
+          commentCount,
+          replyChannelId,
         });
       }
     }
 
     return result;
+  }
+
+  /**
+   * Get comments/replies for a specific message
+   */
+  async getComments(channelId: string, messageId: number, limit: number = 20): Promise<MessageInfo[]> {
+    if (!this.client) throw new Error('Client not initialized');
+
+    try {
+      // Get the discussion/reply messages
+      const result = await this.client.invoke(
+        new Api.messages.GetReplies({
+          peer: channelId,
+          msgId: messageId,
+          offsetId: 0,
+          offsetDate: 0,
+          addOffset: 0,
+          limit,
+          maxId: 0,
+          minId: 0,
+          hash: 0 as any,
+        })
+      );
+
+      const comments: MessageInfo[] = [];
+
+      if ('messages' in result) {
+        for (const msg of result.messages) {
+          if (msg instanceof Api.Message) {
+            let senderName = 'Unknown';
+
+            if (msg.fromId) {
+              try {
+                const sender = await this.client.getEntity(msg.fromId);
+                if (sender instanceof Api.User) {
+                  senderName = sender.firstName || '';
+                  if (sender.lastName) senderName += ` ${sender.lastName}`;
+                } else if (sender instanceof Api.Channel || sender instanceof Api.Chat) {
+                  senderName = (sender as any).title || 'Channel';
+                }
+              } catch (error) {
+                console.error('Failed to get comment sender:', error);
+              }
+            }
+
+            comments.push({
+              id: msg.id,
+              text: msg.message || '',
+              date: new Date(msg.date * 1000),
+              senderId: msg.fromId?.toString() || '',
+              senderName,
+              isOutgoing: msg.out || false,
+              media: msg.media,
+            });
+          }
+        }
+      }
+
+      return comments;
+    } catch (error) {
+      console.error('Failed to fetch comments:', error);
+      return [];
+    }
   }
 
   async logout(): Promise<void> {
