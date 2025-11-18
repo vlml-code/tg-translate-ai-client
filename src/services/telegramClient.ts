@@ -13,15 +13,21 @@ export class TelegramService {
   private phoneCodeHash: string = '';
 
   async initialize(): Promise<void> {
-    // Try to load existing session
     const savedSession = SessionManager.getSession();
-    const stringSession = new StringSession(savedSession?.session || '');
+    this.client = this.createClient(savedSession?.session || '');
 
-    this.client = new TelegramClient(stringSession, API_ID, API_HASH, {
-      connectionRetries: 5,
-    });
-
-    await this.client.connect();
+    try {
+      await this.client.connect();
+    } catch (error: any) {
+      if (this.isAuthKeyDuplicated(error)) {
+        console.warn('Detected duplicated auth key, clearing cached session.');
+        SessionManager.clearSession();
+        this.client = this.createClient('');
+        await this.client.connect();
+        throw new Error('AUTH_KEY_DUPLICATED');
+      }
+      throw error;
+    }
   }
 
   async isAuthorized(): Promise<boolean> {
@@ -190,6 +196,18 @@ export class TelegramService {
 
   getClient(): TelegramClient | null {
     return this.client;
+  }
+
+  private createClient(session: string): TelegramClient {
+    const stringSession = new StringSession(session);
+    return new TelegramClient(stringSession, API_ID, API_HASH, {
+      connectionRetries: 5,
+    });
+  }
+
+  private isAuthKeyDuplicated(error: any): boolean {
+    const message = error?.message || '';
+    return message.includes('AUTH_KEY_DUPLICATED');
   }
 }
 

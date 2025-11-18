@@ -1,0 +1,114 @@
+.settings-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(3, 6, 10, 0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 20;
+  backdrop-filter: blur(4px);
+}
+
+.settings-modal {
+  background: rgba(23, 33, 43, 0.95);
+  border-radius: 18px;
+  width: 440px;
+  max-width: 92vw;
+  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.45);
+  padding: 28px;
+  border: 1px solid var(--tg-border);
+  color: var(--tg-text-primary);
+}
+
+.settings-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.settings-modal-header h2 {
+  font-size: 20px;
+  color: var(--tg-text-primary);
+}
+
+.close-btn {
+  border: none;
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 24px;
+  cursor: pointer;
+  color: var(--tg-text-primary);
+  border-radius: 999px;
+  width: 36px;
+  height: 36px;
+  line-height: 1;
+}
+
+.settings-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--tg-text-secondary);
+}
+
+.form-field input,
+.form-field textarea {
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 10px;
+  padding: 12px 14px;
+  font-size: 14px;
+  font-family: inherit;
+  resize: none;
+  background: rgba(12, 19, 28, 0.9);
+  color: var(--tg-text-primary);
+}
+
+.form-field input:focus,
+.form-field textarea:focus {
+  outline: none;
+  border-color: var(--tg-accent-strong);
+  box-shadow: 0 0 0 2px rgba(78, 164, 246, 0.2);
+}
+
+.form-field small {
+  color: var(--tg-text-secondary);
+  font-size: 12px;
+}
+
+.settings-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.settings-actions button {
+  border-radius: 999px;
+  padding: 9px 20px;
+  font-size: 14px;
+  cursor: pointer;
+  border: none;
+}
+
+.settings-actions .secondary {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--tg-text-primary);
+}
+
+.settings-actions .primary {
+  background: var(--tg-accent);
+  color: #fff;
+  box-shadow: 0 8px 16px rgba(43, 82, 120, 0.4);
+}
+
+.settings-actions button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

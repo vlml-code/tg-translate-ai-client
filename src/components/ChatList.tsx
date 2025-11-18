@@ -6,9 +6,14 @@ import './ChatList.css';
 interface ChatListProps {
   onChatSelect: (chatId: string, chatTitle: string) => void;
   selectedChatId: string | null;
+  onOpenSettings: () => void;
 }
 
-export const ChatList: React.FC<ChatListProps> = ({ onChatSelect, selectedChatId }) => {
+export const ChatList: React.FC<ChatListProps> = ({
+  onChatSelect,
+  selectedChatId,
+  onOpenSettings
+}) => {
   const [chats, setChats] = useState<ChatInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -78,10 +83,20 @@ export const ChatList: React.FC<ChatListProps> = ({ onChatSelect, selectedChatId
   return (
     <div className="chat-list">
       <div className="chat-list-header">
-        <h2>Chats</h2>
-        <button className="logout-btn" onClick={handleLogout}>
-          Logout
-        </button>
+        <div className="chat-list-heading">
+          <h2>Chats</h2>
+          <p>Translate with Grok</p>
+        </div>
+        <div className="chat-list-actions">
+          <button className="settings-btn" onClick={onOpenSettings}>
+            <span aria-hidden="true">⚙️</span>
+            <span>Settings</span>
+          </button>
+          <button className="logout-btn" onClick={handleLogout}>
+            <span aria-hidden="true">⎋</span>
+            <span>Logout</span>
+          </button>
+        </div>
       </div>
       <div className="chat-items">
         {chats.map((chat) => (

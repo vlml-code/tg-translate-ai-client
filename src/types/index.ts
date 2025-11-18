@@ -37,5 +37,11 @@ export interface AuthStep {
   phoneCodeHash?: string;
 }
 
+export interface TranslationSettings {
+  apiKey: string;
+  prompt: string;
+  simplifyPrompt: string;
+}
+
 export type TelegramMessage = Api.Message;
 export type TelegramChat = Api.Chat | Api.Channel | Api.User;

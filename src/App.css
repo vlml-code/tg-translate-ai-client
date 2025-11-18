@@ -1,3 +1,20 @@
+:root {
+  --tg-bg: #0d141f;
+  --tg-panel: #17212b;
+  --tg-panel-dark: #1f2b3a;
+  --tg-panel-darker: #0f1b28;
+  --tg-accent: #2b5278;
+  --tg-accent-strong: #4ea4f6;
+  --tg-green: #4cc482;
+  --tg-text-primary: #f4f7fb;
+  --tg-text-secondary: #8b9bb4;
+  --tg-border: rgba(255, 255, 255, 0.06);
+  --tg-scroll: rgba(255, 255, 255, 0.2);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+}
+
 * {
   margin: 0;
   padding: 0;
@@ -5,9 +22,8 @@
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
+  background: var(--tg-bg);
+  color: var(--tg-text-primary);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -16,6 +32,8 @@ body {
   display: flex;
   height: 100vh;
   overflow: hidden;
+  background: radial-gradient(circle at top, #20354a 0%, var(--tg-bg) 55%);
+  color: var(--tg-text-primary);
 }
 
 .app-loading {
@@ -24,15 +42,15 @@ body {
   justify-content: center;
   align-items: center;
   height: 100vh;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
+  background: linear-gradient(145deg, #0e1b2b, #1f2b3a);
+  color: var(--tg-text-primary);
 }
 
 .spinner {
-  width: 50px;
-  height: 50px;
-  border: 4px solid rgba(255, 255, 255, 0.3);
-  border-top-color: white;
+  width: 52px;
+  height: 52px;
+  border: 4px solid rgba(255, 255, 255, 0.15);
+  border-top-color: var(--tg-accent-strong);
   border-radius: 50%;
   animation: spin 1s linear infinite;
   margin-bottom: 20px;
@@ -46,7 +64,7 @@ body {
 
 .app-loading p {
   font-size: 18px;
-  margin-top: 10px;
+  color: var(--tg-text-secondary);
 }
 
 .no-chat-selected {
@@ -54,28 +72,30 @@ body {
   display: flex;
   justify-content: center;
   align-items: center;
-  background: #f0f2f5;
+  background: var(--tg-panel-darker);
+  border-left: 1px solid var(--tg-border);
 }
 
 .no-chat-content {
   text-align: center;
-  color: #667;
-  max-width: 400px;
+  color: var(--tg-text-secondary);
+  max-width: 420px;
   padding: 40px;
 }
 
 .no-chat-content svg {
-  color: #ccc;
+  color: var(--tg-text-secondary);
   margin-bottom: 20px;
+  opacity: 0.5;
 }
 
 .no-chat-content h2 {
   font-size: 24px;
-  color: #333;
+  color: var(--tg-text-primary);
   margin-bottom: 12px;
 }
 
 .no-chat-content p {
   font-size: 16px;
-  color: #666;
+  color: var(--tg-text-secondary);
 }
