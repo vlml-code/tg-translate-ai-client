@@ -18,6 +18,9 @@ export default defineConfig({
   ],
   server: {
     port: 3000,
+    warmup: {
+      clientFiles: ['./src/components/*.tsx', './src/services/*.ts']
+    }
   },
   optimizeDeps: {
     include: ['telegram', 'telegram/sessions', 'telegram/Password'],
@@ -29,7 +32,15 @@ export default defineConfig({
         manualChunks: {
           'cedict': ['cc-cedict']
         }
+      },
+      onwarn(warning, warn) {
+        // Ignore sourcemap warnings for cc-cedict
+        if (warning.code === 'SOURCEMAP_ERROR' && warning.message.includes('cc-cedict')) {
+          return;
+        }
+        warn(warning);
       }
-    }
+    },
+    sourcemap: true
   }
 })

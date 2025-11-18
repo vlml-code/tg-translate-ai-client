@@ -45,13 +45,29 @@ function getDominantTone(pinyinNumArray: string[]): string {
  */
 export async function analyzeChineseText(text: string): Promise<SegmentedWord[]> {
   // 1. Segment Chinese into words
-  const segmentResult = segment(text, { segmentType: 'word' });
+  // segment() with no options returns a space-separated string
+  // We need to use it and split the result, or check the actual return type
+  const segmentResult = segment(text);
 
-  // segment() returns array of objects like {origin: '我', result: '我'}
-  // Extract the actual text from each segment
-  const words = Array.isArray(segmentResult)
-    ? segmentResult.map((item: any) => typeof item === 'string' ? item : item.origin || item.result || item)
-    : [text];
+  // Handle different return types from segment()
+  let words: string[];
+  if (typeof segmentResult === 'string') {
+    // If it's a string, split by spaces
+    words = segmentResult.split(' ').filter(w => w.length > 0);
+  } else if (Array.isArray(segmentResult)) {
+    // If it's an array, extract strings from objects or use as-is
+    words = segmentResult.map((item: any) => {
+      if (typeof item === 'string') {
+        return item;
+      } else if (typeof item === 'object' && item !== null) {
+        return item.origin || item.result || String(item);
+      }
+      return String(item);
+    });
+  } else {
+    // Fallback: just use the original text
+    words = [text];
+  }
 
   // 2. Lazy-load dictionary
   const cedict = await getCedict();
