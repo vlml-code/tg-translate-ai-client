@@ -227,6 +227,9 @@ export class TelegramService {
     if (!this.client) throw new Error('Client not initialized');
 
     try {
+      console.log('=== FETCHING COMMENTS ===');
+      console.log('Input - Channel ID:', channelId, 'Message ID:', messageId);
+
       // First, get the discussion message which maps the channel post to the discussion group
       const discussionResult = await this.client.invoke(
         new Api.messages.GetDiscussionMessage({
@@ -235,24 +238,38 @@ export class TelegramService {
         })
       );
 
+      console.log('Discussion Result:', discussionResult);
+      console.log('Messages count:', discussionResult.messages?.length);
+
       // Extract the discussion group message
       if (!discussionResult.messages || discussionResult.messages.length === 0) {
+        console.log('No messages in discussion result');
         return [];
       }
 
       // The first message is the root discussion message
       const rootMessage = discussionResult.messages[0];
+      console.log('Root message type:', rootMessage.className);
+      console.log('Root message ID:', rootMessage instanceof Api.Message ? rootMessage.id : 'N/A');
+      console.log('Root message peerId:', rootMessage instanceof Api.Message ? rootMessage.peerId : 'N/A');
+
       if (!(rootMessage instanceof Api.Message)) {
+        console.log('Root message is not an Api.Message');
         return [];
       }
 
       // Get the peer info for the discussion group
       const discussionPeer = rootMessage.peerId;
       if (!discussionPeer) {
+        console.log('No peer ID in root message');
         return [];
       }
 
+      console.log('Discussion Peer:', discussionPeer);
+      console.log('Discussion Peer className:', discussionPeer.className);
+
       // Now fetch the replies from the discussion group
+      console.log('Fetching replies with peer:', discussionPeer, 'msgId:', rootMessage.id);
       const repliesResult = await this.client.invoke(
         new Api.messages.GetReplies({
           peer: discussionPeer,
@@ -267,11 +284,16 @@ export class TelegramService {
         })
       );
 
+      console.log('Replies Result:', repliesResult);
+      console.log('Replies count:', 'messages' in repliesResult ? repliesResult.messages.length : 0);
+
       const comments: MessageInfo[] = [];
 
       if ('messages' in repliesResult) {
         for (const msg of repliesResult.messages) {
           if (msg instanceof Api.Message) {
+            console.log('Processing comment - ID:', msg.id, 'Date:', new Date(msg.date * 1000), 'Text preview:', msg.message?.substring(0, 50));
+
             let senderName = 'Unknown';
 
             if (msg.fromId) {
@@ -323,6 +345,8 @@ export class TelegramService {
         }
       }
 
+      console.log('Final comments extracted:', comments.length);
+      console.log('=== END FETCHING COMMENTS ===');
       return comments;
     } catch (error) {
       console.error('Failed to fetch comments:', error);
