@@ -76,6 +76,30 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </small>
           </label>
 
+          <label className="form-field">
+            <span>DeepSeek API key</span>
+            <input
+              type="password"
+              value={settings.deepseekApiKey}
+              onChange={(e) => setSettings({ ...settings, deepseekApiKey: e.target.value })}
+              placeholder="sk-..."
+              autoComplete="off"
+            />
+            <small>Used for generating digests from monitored messages.</small>
+          </label>
+
+          <label className="form-field">
+            <span>Digest prompt</span>
+            <textarea
+              value={settings.digestPrompt}
+              onChange={(e) => setSettings({ ...settings, digestPrompt: e.target.value })}
+              rows={4}
+            />
+            <small>
+              This prompt guides how DeepSeek creates digests from your monitored channel messages.
+            </small>
+          </label>
+
           <div className="settings-actions">
             <button type="button" className="secondary" onClick={onClose}>
               Cancel

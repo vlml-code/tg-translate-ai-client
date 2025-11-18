@@ -3,12 +3,13 @@
  */
 
 const DB_NAME = 'TelegramArchive';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 // Object store names
 const STORES = {
   SAVED_CHANNELS: 'savedChannels',
   ARCHIVED_MESSAGES: 'archivedMessages',
+  GENERATED_DIGESTS: 'generatedDigests',
 };
 
 export interface SavedChannel {
@@ -29,6 +30,15 @@ export interface ArchivedMessage {
   senderId: string;
   senderName: string;
   isOutgoing: boolean;
+}
+
+export interface GeneratedDigest {
+  id?: number; // Auto-increment key
+  tag: string; // Tag for grouping messages
+  date: Date; // Date the digest is for (messages date, not generation date)
+  digest: string; // The generated digest text
+  generatedAt: Date; // When the digest was generated
+  messageCount: number; // Number of messages used to generate this digest
 }
 
 class DatabaseService {
@@ -69,6 +79,17 @@ class DatabaseService {
           messageStore.createIndex('chatId', 'chatId', { unique: false });
           messageStore.createIndex('date', 'date', { unique: false });
           messageStore.createIndex('chatId_date', ['chatId', 'date'], { unique: false });
+        }
+
+        // Create generatedDigests store
+        if (!db.objectStoreNames.contains(STORES.GENERATED_DIGESTS)) {
+          const digestStore = db.createObjectStore(STORES.GENERATED_DIGESTS, {
+            keyPath: 'id',
+            autoIncrement: true
+          });
+          digestStore.createIndex('tag', 'tag', { unique: false });
+          digestStore.createIndex('date', 'date', { unique: false });
+          digestStore.createIndex('tag_date', ['tag', 'date'], { unique: false });
         }
       };
     });
@@ -347,6 +368,125 @@ class DatabaseService {
 
       request.onsuccess = () => resolve();
       request.onerror = () => reject(new Error('Failed to clear messages'));
+    });
+  }
+
+  // ========== Generated Digests Methods ==========
+
+  /**
+   * Save a generated digest
+   */
+  async saveDigest(digest: GeneratedDigest): Promise<void> {
+    const db = await this.ensureDb();
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction([STORES.GENERATED_DIGESTS], 'readwrite');
+      const store = transaction.objectStore(STORES.GENERATED_DIGESTS);
+      const request = store.add(digest);
+
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(new Error('Failed to save digest'));
+    });
+  }
+
+  /**
+   * Get digests for a specific date
+   */
+  async getDigestsByDate(date: Date): Promise<GeneratedDigest[]> {
+    const db = await this.ensureDb();
+    const startOfDay = new Date(date);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(date);
+    endOfDay.setHours(23, 59, 59, 999);
+
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction([STORES.GENERATED_DIGESTS], 'readonly');
+      const store = transaction.objectStore(STORES.GENERATED_DIGESTS);
+      const index = store.index('date');
+      const range = IDBKeyRange.bound(startOfDay, endOfDay);
+      const request = index.getAll(range);
+
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(new Error('Failed to get digests'));
+    });
+  }
+
+  /**
+   * Get digest for a specific tag and date
+   */
+  async getDigestByTagAndDate(tag: string, date: Date): Promise<GeneratedDigest | null> {
+    const db = await this.ensureDb();
+    const startOfDay = new Date(date);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(date);
+    endOfDay.setHours(23, 59, 59, 999);
+
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction([STORES.GENERATED_DIGESTS], 'readonly');
+      const store = transaction.objectStore(STORES.GENERATED_DIGESTS);
+      const request = store.getAll();
+
+      request.onsuccess = () => {
+        const allDigests = request.result as GeneratedDigest[];
+        const digest = allDigests.find(
+          d => d.tag === tag &&
+          new Date(d.date) >= startOfDay &&
+          new Date(d.date) <= endOfDay
+        );
+        resolve(digest || null);
+      };
+      request.onerror = () => reject(new Error('Failed to get digest'));
+    });
+  }
+
+  /**
+   * Get all unique dates that have generated digests
+   */
+  async getDigestDates(): Promise<Date[]> {
+    const db = await this.ensureDb();
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction([STORES.GENERATED_DIGESTS], 'readonly');
+      const store = transaction.objectStore(STORES.GENERATED_DIGESTS);
+      const index = store.index('date');
+      const request = index.openCursor();
+
+      const dates = new Set<string>();
+
+      request.onsuccess = (event) => {
+        const cursor = (event.target as IDBRequest<IDBCursorWithValue>).result;
+        if (cursor) {
+          const digest = cursor.value as GeneratedDigest;
+          const dateStr = new Date(digest.date).toDateString();
+          dates.add(dateStr);
+          cursor.continue();
+        } else {
+          const uniqueDates = Array.from(dates).map(d => new Date(d));
+          uniqueDates.sort((a, b) => b.getTime() - a.getTime());
+          resolve(uniqueDates);
+        }
+      };
+
+      request.onerror = () => reject(new Error('Failed to get digest dates'));
+    });
+  }
+
+  /**
+   * Check if a message already exists (to prevent duplicates)
+   */
+  async messageExists(chatId: string, messageId: number): Promise<boolean> {
+    const db = await this.ensureDb();
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction([STORES.ARCHIVED_MESSAGES], 'readonly');
+      const store = transaction.objectStore(STORES.ARCHIVED_MESSAGES);
+      const index = store.index('chatId');
+      const request = index.getAll(IDBKeyRange.only(chatId));
+
+      request.onsuccess = () => {
+        const messages = request.result as ArchivedMessage[];
+        const exists = messages.some(msg => msg.messageId === messageId);
+        resolve(exists);
+      };
+
+      request.onerror = () => reject(new Error('Failed to check message existence'));
     });
   }
 }
