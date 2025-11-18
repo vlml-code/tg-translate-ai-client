@@ -42,6 +42,7 @@
 }
 
 .archive-btn,
+.flashcards-btn,
 .settings-btn,
 .logout-btn {
   padding: 8px 14px;
@@ -55,12 +56,19 @@
   align-items: center;
   gap: 6px;
   background: transparent;
+  position: relative;
 }
 
 .archive-btn {
   background: rgba(82, 136, 193, 0.18);
   color: #8fc5ff;
   border: 1px solid rgba(82, 136, 193, 0.35);
+}
+
+.flashcards-btn {
+  background: rgba(139, 92, 246, 0.18);
+  color: #c4b5fd;
+  border: 1px solid rgba(139, 92, 246, 0.35);
 }
 
 .settings-btn {
@@ -76,10 +84,26 @@
 }
 
 .archive-btn:hover,
+.flashcards-btn:hover,
 .settings-btn:hover,
 .logout-btn:hover {
   transform: translateY(-1px);
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
+}
+
+.flashcard-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  background: #ef4444;
+  color: white;
+  border-radius: 10px;
+  padding: 2px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  min-width: 18px;
+  text-align: center;
+  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.4);
 }
 
 .chat-items {

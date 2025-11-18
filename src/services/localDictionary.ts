@@ -70,13 +70,19 @@ class LocalDictionary {
 
       cache.set(word, existing);
     } else {
-      // Create new entry
+      // Create new entry with SRS fields initialized
       const newEntry: DictionaryEntry = {
         word,
         pinyin,
         meanings: [translation],
         addedAt: Date.now(),
         usageCount: 1,
+        // SRS fields - new words need review immediately
+        nextReview: Date.now(),
+        interval: 0,
+        easeFactor: 2.5,
+        reviewCount: 0,
+        lastReviewed: 0,
       };
       cache.set(word, newEntry);
     }
@@ -144,6 +150,78 @@ class LocalDictionary {
       console.error('Failed to import dictionary:', error);
       throw new Error('Invalid dictionary format');
     }
+  }
+
+  /**
+   * Get words that need review (nextReview <= now)
+   */
+  getWordsForReview(): DictionaryEntry[] {
+    const now = Date.now();
+    const words = this.getAllWords();
+    return words
+      .filter(entry => entry.nextReview <= now)
+      .sort((a, b) => a.nextReview - b.nextReview); // Oldest due first
+  }
+
+  /**
+   * Update word after review with SRS algorithm (SM-2)
+   * quality: 0-5 (0=complete blackout, 5=perfect response)
+   */
+  updateAfterReview(word: string, quality: number): void {
+    const cache = this.loadCache();
+    const entry = cache.get(word);
+
+    if (!entry) return;
+
+    const now = Date.now();
+    entry.reviewCount++;
+    entry.lastReviewed = now;
+
+    // SM-2 Algorithm
+    if (quality >= 3) {
+      // Correct response
+      if (entry.reviewCount === 1) {
+        entry.interval = 1;
+      } else if (entry.reviewCount === 2) {
+        entry.interval = 6;
+      } else {
+        entry.interval = Math.round(entry.interval * entry.easeFactor);
+      }
+
+      // Update ease factor
+      entry.easeFactor = Math.max(
+        1.3,
+        entry.easeFactor + (0.1 - (5 - quality) * (0.08 + (5 - quality) * 0.02))
+      );
+    } else {
+      // Incorrect response - reset interval
+      entry.interval = 1;
+      entry.reviewCount = 1;
+    }
+
+    // Set next review date
+    entry.nextReview = now + entry.interval * 24 * 60 * 60 * 1000;
+
+    cache.set(word, entry);
+    this.saveCache();
+  }
+
+  /**
+   * Get review statistics
+   */
+  getReviewStats(): { dueNow: number; dueToday: number; total: number } {
+    const now = Date.now();
+    const endOfDay = new Date();
+    endOfDay.setHours(23, 59, 59, 999);
+    const endOfDayTimestamp = endOfDay.getTime();
+
+    const words = this.getAllWords();
+
+    return {
+      dueNow: words.filter(w => w.nextReview <= now).length,
+      dueToday: words.filter(w => w.nextReview <= endOfDayTimestamp).length,
+      total: words.length,
+    };
   }
 }
 

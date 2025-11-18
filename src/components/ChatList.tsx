@@ -8,13 +8,17 @@ interface ChatListProps {
   selectedChatId: string | null;
   onOpenSettings: () => void;
   onOpenArchive: () => void;
+  onOpenFlashcards: () => void;
+  flashcardsDue?: number;
 }
 
 export const ChatList: React.FC<ChatListProps> = ({
   onChatSelect,
   selectedChatId,
   onOpenSettings,
-  onOpenArchive
+  onOpenArchive,
+  onOpenFlashcards,
+  flashcardsDue = 0
 }) => {
   const [chats, setChats] = useState<ChatInfo[]>([]);
   const [loading, setLoading] = useState(true);
@@ -93,6 +97,11 @@ export const ChatList: React.FC<ChatListProps> = ({
           <button className="archive-btn" onClick={onOpenArchive}>
             <span aria-hidden="true">📊</span>
             <span>Digest</span>
+          </button>
+          <button className="flashcards-btn" onClick={onOpenFlashcards}>
+            <span aria-hidden="true">🎴</span>
+            <span>Flashcards</span>
+            {flashcardsDue > 0 && <span className="flashcard-badge">{flashcardsDue}</span>}
           </button>
           <button className="settings-btn" onClick={onOpenSettings}>
             <span aria-hidden="true">⚙️</span>

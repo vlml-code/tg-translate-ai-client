@@ -3,9 +3,11 @@ import { AuthForm } from './components/AuthForm';
 import { ChatList } from './components/ChatList';
 import { ChatView } from './components/ChatView';
 import { SettingsModal } from './components/SettingsModal';
+import { FlashcardModal } from './components/FlashcardModal';
 import { CompactChatsPage } from './components/CompactChatsPage';
 import { telegramService } from './services/telegramClient';
 import { settingsService } from './services/settingsService';
+import { localDictionary } from './services/localDictionary';
 import { TranslationSettings } from './types';
 import './App.css';
 
@@ -17,14 +19,29 @@ function App() {
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
   const [selectedChatTitle, setSelectedChatTitle] = useState<string>('');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isFlashcardsOpen, setIsFlashcardsOpen] = useState(false);
   const [currentView, setCurrentView] = useState<AppView>('chats');
   const [settings, setSettings] = useState<TranslationSettings>(
     settingsService.getSettings()
   );
   const [startupError, setStartupError] = useState<string | null>(null);
+  const [reviewStats, setReviewStats] = useState({ dueNow: 0, dueToday: 0, total: 0 });
 
   useEffect(() => {
     initializeTelegram();
+  }, []);
+
+  // Update flashcard review stats periodically
+  useEffect(() => {
+    const updateStats = () => {
+      const stats = localDictionary.getReviewStats();
+      setReviewStats(stats);
+    };
+
+    updateStats(); // Initial load
+    const interval = setInterval(updateStats, 60000); // Update every minute
+
+    return () => clearInterval(interval);
   }, []);
 
   const initializeTelegram = async () => {
@@ -96,6 +113,8 @@ function App() {
           selectedChatId={selectedChatId}
           onOpenSettings={() => setIsSettingsOpen(true)}
           onOpenArchive={() => setCurrentView('archive')}
+          onOpenFlashcards={() => setIsFlashcardsOpen(true)}
+          flashcardsDue={reviewStats.dueNow}
         />
         {selectedChatId ? (
           <ChatView
@@ -128,6 +147,16 @@ function App() {
         onClose={() => setIsSettingsOpen(false)}
         initialSettings={settings}
         onSave={handleSaveSettings}
+      />
+
+      <FlashcardModal
+        isOpen={isFlashcardsOpen}
+        onClose={() => {
+          setIsFlashcardsOpen(false);
+          // Refresh stats after closing in case words were reviewed
+          const stats = localDictionary.getReviewStats();
+          setReviewStats(stats);
+        }}
       />
     </>
   );

@@ -54,6 +54,13 @@ export interface DictionaryEntry {
   meanings: string[];     // Multiple English translations
   addedAt: number;        // Timestamp when first added
   usageCount: number;     // How many times this word was encountered
+
+  // Spaced Repetition System (SRS) fields
+  nextReview: number;     // Timestamp of next review (0 = needs review now)
+  interval: number;       // Days until next review
+  easeFactor: number;     // Ease factor (2.5 is default, affects interval growth)
+  reviewCount: number;    // Number of times reviewed
+  lastReviewed: number;   // Timestamp of last review
 }
 
 // AI segmentation result for a single word/segment
