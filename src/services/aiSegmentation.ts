@@ -4,7 +4,7 @@ import { pinyin } from 'pinyin-pro';
 import { AISegmentationResponse, SegmentResult } from '../types';
 import { localDictionary } from './localDictionary';
 
-const MODEL = 'grok-beta';
+const MODEL = 'grok-4-fast';
 
 const DEFAULT_SEGMENT_PROMPT = `Segment the following Chinese text into words and provide English translations. Return ONLY valid JSON with no additional text or markdown formatting.
 
