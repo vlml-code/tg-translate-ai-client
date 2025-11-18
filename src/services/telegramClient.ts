@@ -212,7 +212,7 @@ export class TelegramService {
           return entity.creator || (entity.adminRights?.postMessages || false);
         } else {
           // It's a supergroup/megagroup - check if we can send messages
-          return !entity.banned;
+          return !(entity.bannedRights?.sendMessages || false);
         }
       } else if (entity instanceof Api.Chat) {
         // Regular group - check if we're not restricted

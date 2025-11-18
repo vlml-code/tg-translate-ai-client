@@ -20,6 +20,16 @@ export default defineConfig({
     port: 3000,
   },
   optimizeDeps: {
-    include: ['telegram', 'telegram/sessions', 'telegram/Password']
+    include: ['telegram', 'telegram/sessions', 'telegram/Password'],
+    exclude: ['cc-cedict']
+  },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'cedict': ['cc-cedict']
+        }
+      }
+    }
   }
 })

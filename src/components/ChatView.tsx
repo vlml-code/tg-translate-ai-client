@@ -1,8 +1,8 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { pinyin } from 'pinyin-pro';
 import { MessageInfo, TranslationSettings } from '../types';
 import { telegramService } from '../services/telegramClient';
 import { translationService } from '../services/translationService';
+import { analyzeChineseText, containsChinese } from '../services/dictionaryService';
 import './ChatView.css';
 
 const TranslateIcon = () => (
@@ -34,52 +34,67 @@ interface ChatViewProps {
 
 type ToneCategory = '0' | '1' | '2' | '3' | '4' | '5';
 
-const CHINESE_CHAR_REGEX = /[\u3400-\u9FFF]/u;
+/**
+ * Component that renders message text with word-level segmentation and dictionary tooltips
+ */
+const MessageTextWithPinyin: React.FC<{ text: string; messageKey: string | number }> = ({ text, messageKey }) => {
+  const [segments, setSegments] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-const getToneCategory = (numericPinyin: string): ToneCategory => {
-  const match = numericPinyin?.match(/([1-5])$/);
-  return (match?.[1] as ToneCategory) || '0';
-};
+  useEffect(() => {
+    const loadSegments = async () => {
+      // If no Chinese characters, just use the text as-is
+      if (!containsChinese(text)) {
+        setSegments([{ word: text, pinyinNum: [], pinyinMarked: '', english: null, toneCategory: '0' }]);
+        setIsLoading(false);
+        return;
+      }
 
-const renderMessageTextWithPinyin = (text: string, messageKey: string | number) => {
-  const nodes: React.ReactNode[] = [];
-  let buffer = '';
-  let bufferIndex = 0;
+      // Analyze and segment the text into words
+      const result = await analyzeChineseText(text);
+      setSegments(result);
+      setIsLoading(false);
+    };
 
-  const pushBuffer = () => {
-    if (!buffer) return;
-    nodes.push(
-      <span key={`buffer-${messageKey}-${bufferIndex++}`} className="message-text-chunk">
-        {buffer}
-      </span>
-    );
-    buffer = '';
-  };
+    loadSegments();
+  }, [text]);
 
-  Array.from(text).forEach((char, index) => {
-    if (CHINESE_CHAR_REGEX.test(char)) {
-      pushBuffer();
-      const tooltip = pinyin(char);
-      const toneCategory = getToneCategory(pinyin(char, { toneType: 'num' }));
+  if (isLoading) {
+    return <span className="message-text-chunk">{text}</span>;
+  }
 
-      nodes.push(
-        <span
-          key={`char-${messageKey}-${index}`}
-          className="chinese-char"
-          data-pinyin={tooltip}
-          data-tone={toneCategory}
-        >
-          {char}
-        </span>
-      );
-    } else {
-      buffer += char;
-    }
-  });
+  return (
+    <>
+      {segments.map((segment, index) => {
+        // Non-Chinese text (punctuation, English, etc.)
+        if (segment.pinyinNum.length === 0) {
+          return (
+            <span key={`text-${messageKey}-${index}`} className="message-text-chunk">
+              {segment.word}
+            </span>
+          );
+        }
 
-  pushBuffer();
+        // Chinese word with dictionary lookup
+        const tooltipContent = segment.english
+          ? `${segment.pinyinMarked}\n${segment.english}`
+          : segment.pinyinMarked;
 
-  return nodes;
+        return (
+          <span
+            key={`word-${messageKey}-${index}`}
+            className="chinese-word"
+            data-pinyin={segment.pinyinMarked}
+            data-definition={segment.english || ''}
+            data-tone={segment.toneCategory as ToneCategory}
+            title={tooltipContent}
+          >
+            {segment.word}
+          </span>
+        );
+      })}
+    </>
+  );
 };
 
 type AugmentationType = 'translation' | 'simplification';
@@ -416,7 +431,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                 <div className="message-bubble">
                   <div className="message-text">
                     {message.text
-                      ? renderMessageTextWithPinyin(message.text, `msg-${message.id}`)
+                      ? <MessageTextWithPinyin text={message.text} messageKey={`msg-${message.id}`} />
                       : '[Media]'}
                   </div>
                   {translationContent?.isShowing && translationContent.content && (
@@ -426,10 +441,10 @@ export const ChatView: React.FC<ChatViewProps> = ({
                   )}
                   {simplificationContent?.isShowing && simplificationContent.content && (
                     <div className="message-simplified">
-                      {renderMessageTextWithPinyin(
-                        simplificationContent.content,
-                        `simplified-${message.id}`
-                      )}
+                      <MessageTextWithPinyin
+                        text={simplificationContent.content}
+                        messageKey={`simplified-${message.id}`}
+                      />
                     </div>
                   )}
                   <div className="message-time">{formatTime(message.date)}</div>
