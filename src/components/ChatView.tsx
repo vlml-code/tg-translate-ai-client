@@ -50,7 +50,11 @@ type ToneCategory = '0' | '1' | '2' | '3' | '4' | '5';
 /**
  * Component that renders message text with word-level segmentation and dictionary tooltips
  */
-const MessageTextWithPinyin: React.FC<{ text: string; messageKey: string | number }> = ({ text, messageKey }) => {
+const MessageTextWithPinyin: React.FC<{
+  text: string;
+  messageKey: string | number;
+  refreshTrigger?: number; // Used to force re-render after dictionary updates
+}> = ({ text, messageKey, refreshTrigger }) => {
   const [segments, setSegments] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -63,14 +67,14 @@ const MessageTextWithPinyin: React.FC<{ text: string; messageKey: string | numbe
         return;
       }
 
-      // Analyze and segment the text into words
+      // Analyze and segment the text into words using dictionary
       const result = await analyzeChineseText(text);
       setSegments(result);
       setIsLoading(false);
     };
 
     loadSegments();
-  }, [text]);
+  }, [text, refreshTrigger]); // Re-run when text OR refreshTrigger changes
 
   if (isLoading) {
     return <span className="message-text-chunk">{text}</span>;
@@ -152,6 +156,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
   const [hasMore, setHasMore] = useState(true);
   const [error, setError] = useState('');
   const [translations, setTranslations] = useState<TranslationState>({});
+  const [dictionaryRefresh, setDictionaryRefresh] = useState(0); // Increment to refresh dictionary-based rendering
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const isInitialLoad = useRef(true);
 
@@ -329,6 +334,12 @@ export const ChatView: React.FC<ChatViewProps> = ({
           translationSettings.apiKey,
           translationSettings.segmentPrompt
         );
+
+        // Trigger refresh to re-render all messages with updated dictionary
+        setDictionaryRefresh(prev => prev + 1);
+
+        // Set success message instead of showing segments separately
+        content = `✓ Learned ${segments.length} words. Hover over the original text to see translations.`;
       } else {
         content =
           type === 'translation'
@@ -467,7 +478,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                 <div className="message-bubble">
                   <div className="message-text">
                     {message.text
-                      ? <MessageTextWithPinyin text={message.text} messageKey={`msg-${message.id}`} />
+                      ? <MessageTextWithPinyin text={message.text} messageKey={`msg-${message.id}`} refreshTrigger={dictionaryRefresh} />
                       : '[Media]'}
                   </div>
                   {translationContent?.isShowing && translationContent.content && (
@@ -480,20 +491,13 @@ export const ChatView: React.FC<ChatViewProps> = ({
                       <MessageTextWithPinyin
                         text={simplificationContent.content}
                         messageKey={`simplified-${message.id}`}
+                        refreshTrigger={dictionaryRefresh}
                       />
                     </div>
                   )}
-                  {segmentationContent?.isShowing && segmentationContent.segments && (
+                  {segmentationContent?.isShowing && segmentationContent.content && (
                     <div className="message-segmented">
-                      {segmentationContent.segments.map((seg: SegmentResult, idx: number) => (
-                        <span
-                          key={`seg-${message.id}-${idx}`}
-                          className="segmented-word"
-                          title={`${seg.pinyin}\n${seg.translation}`}
-                        >
-                          {seg.word}
-                        </span>
-                      ))}
+                      {segmentationContent.content}
                     </div>
                   )}
                   <div className="message-time">{formatTime(message.date)}</div>

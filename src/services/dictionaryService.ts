@@ -31,15 +31,16 @@ function getDominantTone(pinyinNumArray: string[]): string {
 }
 
 /**
- * Analyze Chinese text using local dictionary
- * This is used for passive pinyin display, not for learning segmentation
+ * Analyze Chinese text using local dictionary with greedy word matching
+ * This scans the text and tries to match the longest words from the dictionary
  */
 export async function analyzeChineseText(text: string): Promise<SegmentedWord[]> {
   const result: SegmentedWord[] = [];
+  let i = 0;
 
-  // Process character by character for now
-  // The AI segmentation button is what learns and teaches the dictionary
-  for (const char of text) {
+  while (i < text.length) {
+    const char = text[i];
+
     // Skip non-Chinese characters
     if (!/[\u3400-\u9FFF]/.test(char)) {
       result.push({
@@ -49,28 +50,51 @@ export async function analyzeChineseText(text: string): Promise<SegmentedWord[]>
         english: null,
         toneCategory: '0',
       });
+      i++;
       continue;
     }
 
-    // Get pinyin for the character
-    const pyNumArray = pinyin(char, { toneType: 'num', type: 'array' });
+    // Try to match the longest word from dictionary (up to 6 characters)
+    let matched = false;
+    for (let len = Math.min(6, text.length - i); len > 0; len--) {
+      const word = text.substring(i, i + len);
+      const dictEntry = localDictionary.lookup(word);
 
-    // Try to look up in local dictionary
-    const dictEntry = localDictionary.lookup(char);
+      if (dictEntry) {
+        // Found a match in dictionary!
+        const pyNumArray = pinyin(word, { toneType: 'num', type: 'array' });
+        const toneCategory = getDominantTone(pyNumArray);
 
-    // Generate tone-marked pinyin
-    const pyMarked = pinyin(char, { toneType: 'symbol' });
+        result.push({
+          word: dictEntry.word,
+          pinyinNum: pyNumArray,
+          pinyinMarked: dictEntry.pinyin,
+          english: dictEntry.meanings[0],
+          toneCategory,
+        });
 
-    // Get tone category for color coding
-    const toneCategory = getDominantTone(pyNumArray);
+        i += len;
+        matched = true;
+        break;
+      }
+    }
 
-    result.push({
-      word: char,
-      pinyinNum: pyNumArray,
-      pinyinMarked: dictEntry?.pinyin || pyMarked,
-      english: dictEntry?.meanings[0] || null,
-      toneCategory,
-    });
+    // No dictionary match - fall back to single character
+    if (!matched) {
+      const pyNumArray = pinyin(char, { toneType: 'num', type: 'array' });
+      const pyMarked = pinyin(char, { toneType: 'symbol' });
+      const toneCategory = getDominantTone(pyNumArray);
+
+      result.push({
+        word: char,
+        pinyinNum: pyNumArray,
+        pinyinMarked: pyMarked,
+        english: null,
+        toneCategory,
+      });
+
+      i++;
+    }
   }
 
   return result;
