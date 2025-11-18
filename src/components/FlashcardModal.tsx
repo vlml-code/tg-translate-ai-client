@@ -93,11 +93,11 @@ export const FlashcardModal: React.FC<FlashcardModalProps> = ({ isOpen, onClose 
               <div className="flashcard-front">
                 <div className="card-label">Chinese</div>
                 <div className="card-word">{currentWord?.word}</div>
+                <div className="card-label">Pinyin</div>
+                <div className="card-pinyin">{currentWord?.pinyin}</div>
                 {showAnswer && (
                   <>
                     <div className="card-divider"></div>
-                    <div className="card-label">Pinyin</div>
-                    <div className="card-pinyin">{currentWord?.pinyin}</div>
                     <div className="card-label">Meaning</div>
                     <div className="card-meaning">
                       {currentWord?.meanings.join('; ')}

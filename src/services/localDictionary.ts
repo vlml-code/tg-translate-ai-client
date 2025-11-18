@@ -10,6 +10,22 @@ class LocalDictionary {
   private cache: Map<string, DictionaryEntry> | null = null;
 
   /**
+   * Initialize SRS fields for entries that don't have them (migration)
+   */
+  private initializeSRSFields(entry: any): DictionaryEntry {
+    const now = Date.now();
+    return {
+      ...entry,
+      // Initialize SRS fields if they don't exist
+      nextReview: entry.nextReview ?? now, // Due immediately for review
+      interval: entry.interval ?? 0,
+      easeFactor: entry.easeFactor ?? 2.5,
+      reviewCount: entry.reviewCount ?? 0,
+      lastReviewed: entry.lastReviewed ?? 0,
+    };
+  }
+
+  /**
    * Load dictionary from localStorage into memory cache
    */
   private loadCache(): Map<string, DictionaryEntry> {
@@ -18,12 +34,24 @@ class LocalDictionary {
     }
 
     const stored = localStorage.getItem(DICTIONARY_KEY);
-    const entries: DictionaryEntry[] = stored ? JSON.parse(stored) : [];
+    const rawEntries: any[] = stored ? JSON.parse(stored) : [];
 
     this.cache = new Map();
-    entries.forEach(entry => {
+    let needsSave = false;
+
+    rawEntries.forEach(rawEntry => {
+      const entry = this.initializeSRSFields(rawEntry);
+      // Check if we had to initialize any SRS fields
+      if (rawEntry.nextReview === undefined) {
+        needsSave = true;
+      }
       this.cache!.set(entry.word, entry);
     });
+
+    // Save back to localStorage if we migrated any entries
+    if (needsSave) {
+      this.saveCache();
+    }
 
     return this.cache;
   }
